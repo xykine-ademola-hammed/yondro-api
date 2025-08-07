@@ -1,12 +1,22 @@
-import { Table, Column, Model, DataType, HasMany, CreatedAt, UpdatedAt, ForeignKey, BelongsTo } from 'sequelize-typescript';
-import { Organization } from './Organization';
-import { Workflow } from './Workflow';
-import { Employee } from './Employee';
-import { WorkflowInstanceStage } from './WorkflowInstanceStage';
-import { WorkflowRequestStatus } from '../types';
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  HasMany,
+  CreatedAt,
+  UpdatedAt,
+  ForeignKey,
+  BelongsTo,
+} from "sequelize-typescript";
+import { Organization } from "./Organization";
+import { Workflow } from "./Workflow";
+import { Employee } from "./Employee";
+import { WorkflowInstanceStage } from "./WorkflowInstanceStage";
+import { WorkflowRequestStatus } from "../types";
 
 @Table({
-  tableName: 'workflow_requests',
+  tableName: "workflow_requests",
   timestamps: true,
   underscored: true,
 })
@@ -31,6 +41,24 @@ export class WorkflowRequest extends Model {
     allowNull: false,
   })
   workflowId!: number;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  formId!: number;
+
+  @Column({
+    type: DataType.JSON,
+    defaultValue: {},
+  })
+  formResponses!: Record<string, any>;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  approvedFormUrl!: string;
 
   @ForeignKey(() => Employee)
   @Column({
@@ -58,7 +86,7 @@ export class WorkflowRequest extends Model {
   @BelongsTo(() => Workflow)
   workflow!: Workflow;
 
-  @BelongsTo(() => Employee, 'requestorId')
+  @BelongsTo(() => Employee, "requestorId")
   requestor!: Employee;
 
   @HasMany(() => WorkflowInstanceStage)

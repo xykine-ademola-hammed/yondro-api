@@ -24,8 +24,13 @@ export class WorkflowExecutionController {
     res: Response
   ): Promise<void> {
     try {
-      const { workflowId, nextStageEmployeeId, fieldResponses, requestorId } =
-        req.body;
+      const {
+        workflowId,
+        nextStageEmployeeId,
+        fieldResponses,
+        requestorId,
+        formResponses,
+      } = req.body;
 
       const actedByUserId = req.user?.id;
 
@@ -42,7 +47,8 @@ export class WorkflowExecutionController {
           requestorId,
           nextStageEmployeeId,
           actedByUserId,
-          fieldResponses
+          fieldResponses,
+          formResponses
         );
 
       res.status(201).json({

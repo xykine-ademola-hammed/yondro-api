@@ -39,6 +39,7 @@ export interface StageCompletionData {
   action: "Approve" | "Reject";
   comment?: string;
   fieldResponses?: Record<string, any>;
+  formResponses?: Record<string, any>;
 }
 
 export interface InternalSendBackData {

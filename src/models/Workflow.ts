@@ -1,10 +1,20 @@
-import { Table, Column, Model, DataType, HasMany, CreatedAt, UpdatedAt, ForeignKey, BelongsTo } from 'sequelize-typescript';
-import { Organization } from './Organization';
-import { Stage } from './Stage';
-import { WorkflowRequest } from './WorkflowRequest';
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  HasMany,
+  CreatedAt,
+  UpdatedAt,
+  ForeignKey,
+  BelongsTo,
+} from "sequelize-typescript";
+import { Organization } from "./Organization";
+import { Stage } from "./Stage";
+import { WorkflowRequest } from "./WorkflowRequest";
 
 @Table({
-  tableName: 'workflows',
+  tableName: "workflows",
   timestamps: true,
   underscored: true,
 })
@@ -22,6 +32,12 @@ export class Workflow extends Model {
     allowNull: false,
   })
   organizationId!: number;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  formId!: number;
 
   @Column({
     type: DataType.STRING(255),

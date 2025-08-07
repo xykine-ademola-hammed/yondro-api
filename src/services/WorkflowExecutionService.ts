@@ -13,7 +13,7 @@ import {
   NextStageResponse,
 } from "../types";
 import { StageUtils, subStageActorType } from "../utils/stageUtils";
-import { Op } from "sequelize";
+import { Op, where } from "sequelize";
 
 export class WorkflowExecutionService {
   /**
@@ -24,7 +24,8 @@ export class WorkflowExecutionService {
     requestorId: number,
     nextStageEmployeeId: number,
     actedByUserId?: number,
-    fieldResponses?: any
+    fieldResponses?: any,
+    formResponses?: any
   ): Promise<WorkflowRequest> {
     // Get the workflow and its first stage
     const workflow = await Workflow.findByPk(workflowId, {
@@ -49,6 +50,8 @@ export class WorkflowExecutionService {
 
     // Create workflow request
     const workflowRequest = await WorkflowRequest.create({
+      formId: workflow.formId,
+      formResponses,
       workflowId,
       requestorId,
       organizationId: workflow.organizationId,
@@ -159,6 +162,24 @@ export class WorkflowExecutionService {
           { model: Stage, as: "stage" },
           { model: WorkflowRequest, as: "request" },
         ],
+      });
+
+      if (!stage) {
+        throw new Error("Stage not found");
+      }
+
+      const [affectedRows] = await WorkflowRequest.update(
+        { formResponses: data.formResponses },
+        {
+          where: { id: stage.workflowRequestId },
+        }
+      );
+      if (affectedRows !== 1) {
+        console.log("Handle error: no record or multiple records updated");
+      }
+
+      await stage?.request!.update({
+        formResponses: data.formResponses,
       });
 
       if (!stage) {
