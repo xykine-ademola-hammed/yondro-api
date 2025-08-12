@@ -1,6 +1,6 @@
-import { Request, Response } from 'express';
-import { BaseService } from '../services/BaseService';
-import { Organization, Department } from '../models';
+import { Request, Response } from "express";
+import { BaseService } from "../services/BaseService";
+import { Organization, Department } from "../models";
 
 export class OrganizationController {
   private static organizationService = new BaseService(Organization);
@@ -14,24 +14,25 @@ export class OrganizationController {
 
       if (!name) {
         res.status(400).json({
-          error: 'name is required'
+          error: "name is required",
         });
         return;
       }
 
-      const organization = await OrganizationController.organizationService.create({
-        name,
-        description,
-        isActive: true
-      });
+      const organization =
+        await OrganizationController.organizationService.createOnly({
+          name,
+          description,
+          isActive: true,
+        });
 
       res.status(201).json({
         success: true,
-        data: organization
+        data: organization,
       });
     } catch (error: any) {
       res.status(500).json({
-        error: error.message || 'Failed to create organization'
+        error: error.message || "Failed to create organization",
       });
     }
   }
@@ -43,26 +44,27 @@ export class OrganizationController {
     try {
       const { page, limit, search } = req.query;
 
-      const result = await OrganizationController.organizationService.findWithPagination({
-        page: page ? Number(page) : 1,
-        limit: limit ? Number(limit) : 10,
-        search: search as string,
-        include: [
-          {
-            model: Department,
-            as: 'departments',
-            attributes: ['id', 'name', 'isActive']
-          }
-        ]
-      });
+      const result =
+        await OrganizationController.organizationService.findWithPagination({
+          page: page ? Number(page) : 1,
+          limit: limit ? Number(limit) : 10,
+          search: search as string,
+          include: [
+            {
+              model: Department,
+              as: "departments",
+              attributes: ["id", "name", "isActive"],
+            },
+          ],
+        });
 
       res.json({
         success: true,
-        ...result
+        ...result,
       });
     } catch (error: any) {
       res.status(500).json({
-        error: error.message || 'Failed to get organizations'
+        error: error.message || "Failed to get organizations",
       });
     }
   }
@@ -76,34 +78,35 @@ export class OrganizationController {
 
       if (!id || isNaN(Number(id))) {
         res.status(400).json({
-          error: 'Valid organization id is required'
+          error: "Valid organization id is required",
         });
         return;
       }
 
-      const organization = await OrganizationController.organizationService.findById(Number(id), {
-        include: [
-          {
-            model: Department,
-            as: 'departments'
-          }
-        ]
-      });
+      const organization =
+        await OrganizationController.organizationService.findById(Number(id), {
+          include: [
+            {
+              model: Department,
+              as: "departments",
+            },
+          ],
+        });
 
       if (!organization) {
         res.status(404).json({
-          error: 'Organization not found'
+          error: "Organization not found",
         });
         return;
       }
 
       res.json({
         success: true,
-        data: organization
+        data: organization,
       });
     } catch (error: any) {
       res.status(500).json({
-        error: error.message || 'Failed to get organization'
+        error: error.message || "Failed to get organization",
       });
     }
   }
@@ -118,27 +121,31 @@ export class OrganizationController {
 
       if (!id || isNaN(Number(id))) {
         res.status(400).json({
-          error: 'Valid organization id is required'
+          error: "Valid organization id is required",
         });
         return;
       }
 
-      const organization = await OrganizationController.organizationService.update(Number(id), updateData);
+      const organization =
+        await OrganizationController.organizationService.update(
+          Number(id),
+          updateData
+        );
 
       if (!organization) {
         res.status(404).json({
-          error: 'Organization not found'
+          error: "Organization not found",
         });
         return;
       }
 
       res.json({
         success: true,
-        data: organization
+        data: organization,
       });
     } catch (error: any) {
       res.status(500).json({
-        error: error.message || 'Failed to update organization'
+        error: error.message || "Failed to update organization",
       });
     }
   }
@@ -152,27 +159,29 @@ export class OrganizationController {
 
       if (!id || isNaN(Number(id))) {
         res.status(400).json({
-          error: 'Valid organization id is required'
+          error: "Valid organization id is required",
         });
         return;
       }
 
-      const deleted = await OrganizationController.organizationService.delete(Number(id));
+      const deleted = await OrganizationController.organizationService.delete(
+        Number(id)
+      );
 
       if (!deleted) {
         res.status(404).json({
-          error: 'Organization not found'
+          error: "Organization not found",
         });
         return;
       }
 
       res.json({
         success: true,
-        message: 'Organization deleted successfully'
+        message: "Organization deleted successfully",
       });
     } catch (error: any) {
       res.status(500).json({
-        error: error.message || 'Failed to delete organization'
+        error: error.message || "Failed to delete organization",
       });
     }
   }

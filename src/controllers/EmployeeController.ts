@@ -40,7 +40,7 @@ export class EmployeeController {
         return;
       }
 
-      const employee = await EmployeeController.employeeService.create({
+      const employee = await EmployeeController.employeeService.createOnly({
         departmentId,
         organizationId,
         positionId,
@@ -71,7 +71,7 @@ export class EmployeeController {
       const filters: Filter[] = req.body.filters || [];
       const { limit, offset, search } = req.body;
 
-      const { where } = buildQueryWithIncludes(filters);
+      const { where, include } = buildQueryWithIncludes(filters, Position);
 
       const result =
         await EmployeeController.employeeService.findWithPagination({
@@ -79,7 +79,7 @@ export class EmployeeController {
           limit: limit ? Number(limit) : 10,
           search: search as string,
           where,
-          include: [Department, Position],
+          include: [Department, Position, ...include],
         });
 
       res.json(result);

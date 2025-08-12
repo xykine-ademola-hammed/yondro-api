@@ -122,6 +122,48 @@ export const buildWhereClause = (filters: Filter[]): WhereOptions => {
   return where;
 };
 
+export function buildWhere(filter) {
+  // If filter is an array, process the first element (assuming single top-level condition)
+  if (Array.isArray(filter)) {
+    return buildWhere(filter[0]);
+  }
+
+  // Handle condition objects (AND/OR)
+  if (filter.condition === "and" || filter.condition === "or") {
+    const operator = filter.condition === "and" ? Op.and : Op.or;
+    return {
+      [operator]: filter.value.map((item) => buildWhere(item)),
+    };
+  }
+
+  // Handle comparison conditions
+  if (filter.key && filter.value !== undefined && filter.condition) {
+    // Handle dot notation for nested fields
+    const keys = filter.key.split(".");
+    let whereClause = filter.value;
+
+    // Build nested where clause for dot notation
+    if (keys.length > 1) {
+      whereClause = { [keys[1]]: filter.value };
+    }
+
+    // Map condition to Sequelize operator
+    const conditionMap = {
+      equal: Op.eq,
+    };
+
+    return {
+      [keys[0]]: {
+        [conditionMap[filter.condition]]: whereClause,
+      },
+    };
+  }
+
+  throw new Error("Invalid filter structure");
+}
+
+// ... other utility imports
+
 export const buildQueryWithIncludes = (
   filters: Filter[],
   baseModel?: ModelStatic<any>
@@ -140,24 +182,43 @@ export const buildQueryWithIncludes = (
       Object.assign(where, buildSimpleWhere(key, value, condition));
     } else {
       // Nested: e.g., department.organization.type
-      let currentInclude: IncludeOptions = { model: modelMap[parts[0]] };
+      const topModelKey = parts[0];
+      let currentInclude: IncludeOptions = includeMap[topModelKey] || {
+        model: modelMap[topModelKey],
+      };
       let cursor = currentInclude;
 
+      // Traverse nested includes
       for (let i = 1; i < parts.length - 1; i++) {
-        const nextModel = modelMap[parts[i]];
-        const nestedInclude = { model: nextModel };
-        cursor.include = [nestedInclude];
-        cursor = nestedInclude;
+        const nextModelKey = parts[i];
+        let nextInclude: IncludeOptions | undefined;
+
+        // If already exists, reuse it
+        if (cursor.include) {
+          nextInclude = (cursor.include as IncludeOptions[]).find(
+            (inc) => (inc as any).model === modelMap[nextModelKey]
+          );
+        }
+
+        if (!nextInclude) {
+          nextInclude = { model: modelMap[nextModelKey] };
+          cursor.include = cursor.include
+            ? [...(cursor.include as IncludeOptions[]), nextInclude]
+            : [nextInclude];
+        }
+
+        cursor = nextInclude;
       }
 
       // Final field filter
       const finalKey = parts[parts.length - 1];
-      cursor.where = buildSimpleWhere(finalKey, value, condition);
+      cursor.where = {
+        ...(cursor.where || {}),
+        ...buildSimpleWhere(finalKey, value, condition),
+      };
 
-      includeMap[parts[0]] = deepMergeIncludes(
-        includeMap[parts[0]],
-        currentInclude
-      );
+      // Save back to includeMap
+      includeMap[topModelKey] = currentInclude;
     }
   }
 

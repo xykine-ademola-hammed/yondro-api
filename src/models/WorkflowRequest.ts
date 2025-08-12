@@ -67,6 +67,13 @@ export class WorkflowRequest extends Model {
   })
   requestorId!: number;
 
+  @ForeignKey(() => Employee)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  createdBy!: number;
+
   @Column({
     type: DataType.ENUM(...Object.values(WorkflowRequestStatus)),
     defaultValue: WorkflowRequestStatus.PENDING,

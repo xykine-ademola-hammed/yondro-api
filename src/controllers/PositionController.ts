@@ -41,7 +41,7 @@ export class PositionController {
         return;
       }
 
-      const position = await PositionController.positionService.create({
+      const position = await PositionController.positionService.createOnly({
         organizationId,
         departmentId,
         title,
@@ -54,6 +54,7 @@ export class PositionController {
         data: position,
       });
     } catch (error: any) {
+      console.log("=======  Error creating position:", error);
       res.status(500).json({
         success: false,
         error: error.message || "Failed to create position",

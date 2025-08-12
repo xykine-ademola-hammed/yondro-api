@@ -17,6 +17,14 @@ export class BaseService<T extends Model> {
     }
   }
 
+  async createOnly(data: any): Promise<T | undefined> {
+    try {
+      return await this.model.create(data);
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   async findById(id: number, options?: FindOptions): Promise<T | null> {
     return await this.model.findByPk(id, options);
   }

@@ -20,12 +20,13 @@ export class DepartmentController {
         return;
       }
 
-      const department = await DepartmentController.departmentService.create({
-        organizationId: Number(organizationId),
-        name,
-        description,
-        isActive: true,
-      });
+      const department =
+        await DepartmentController.departmentService.createOnly({
+          organizationId: Number(organizationId),
+          name,
+          description,
+          isActive: true,
+        });
 
       res.status(201).json({
         success: true,
