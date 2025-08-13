@@ -17,7 +17,7 @@ router.post(
   authenticate,
   WorkflowController.getWorkflows
 );
-router.get("/workflow/:id", authenticate, WorkflowController.getWorkflow);
+router.get("/workflows/:id", authenticate, WorkflowController.getWorkflow);
 router.put(
   "/workflow/:id",
   authenticate,
