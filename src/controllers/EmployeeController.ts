@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
-import { Employee, Department, Position } from "../models";
+import { Employee, Department, Position, Unit } from "../models";
 import { Op } from "sequelize";
 import { buildQueryWithIncludes, Filter } from "../utils/filterWhereBuilder";
 
@@ -16,6 +16,8 @@ export class EmployeeController {
         departmentId,
         organizationId,
         positionId,
+        schoolOrOfficeId,
+        unitId,
         firstName,
         lastName,
         email,
@@ -25,7 +27,6 @@ export class EmployeeController {
       } = req.body;
 
       if (
-        !departmentId ||
         !positionId ||
         !firstName ||
         !lastName ||
@@ -35,17 +36,19 @@ export class EmployeeController {
       ) {
         res.status(400).json({
           error:
-            "departmentId, positionId, firstName, lastName, email, and password are required",
+            "positionId, firstName, lastName, email, and password are required",
         });
         return;
       }
 
-      const employee = await EmployeeController.employeeService.create({
+      const employee = await EmployeeController.employeeService.createOnly({
         departmentId,
         organizationId,
         positionId,
         firstName,
         lastName,
+        schoolOrOfficeId,
+        unitId,
         email,
         phone,
         password,
@@ -71,7 +74,7 @@ export class EmployeeController {
       const filters: Filter[] = req.body.filters || [];
       const { limit, offset, search } = req.body;
 
-      const { where } = buildQueryWithIncludes(filters);
+      const { where, include } = buildQueryWithIncludes(filters, Position);
 
       const result =
         await EmployeeController.employeeService.findWithPagination({
@@ -79,7 +82,11 @@ export class EmployeeController {
           limit: limit ? Number(limit) : 10,
           search: search as string,
           where,
-          include: [Department, Position],
+          include: [
+            { model: Department, as: "department", include: [Unit] },
+            Position,
+            ...include,
+          ],
         });
 
       res.json(result);

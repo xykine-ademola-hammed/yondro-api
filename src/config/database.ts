@@ -8,6 +8,10 @@ import {
   Stage,
   WorkflowRequest,
   WorkflowInstanceStage,
+  EmployeePosition,
+  SchoolOrOffice,
+  Unit,
+  SubUnit,
 } from "../models";
 import dotenv from "dotenv";
 
@@ -36,6 +40,10 @@ const sequelize = new Sequelize({
     Stage,
     WorkflowRequest,
     WorkflowInstanceStage,
+    EmployeePosition,
+    SchoolOrOffice,
+    Unit,
+    SubUnit,
   ],
   pool: {
     max: 10,

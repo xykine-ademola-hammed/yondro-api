@@ -6,19 +6,19 @@ import {
   HasMany,
   CreatedAt,
   UpdatedAt,
-  ForeignKey,
   BelongsTo,
+  ForeignKey,
 } from "sequelize-typescript";
-import { Organization } from "./Organization";
-import { Stage } from "./Stage";
-import { WorkflowRequest } from "./WorkflowRequest";
+import { Position } from "./Position";
+import { Employee } from "./Employee";
+import { Unit } from "./Unit";
 
 @Table({
-  tableName: "workflows",
+  tableName: "SubUnits",
   timestamps: true,
   underscored: true,
 })
-export class Workflow extends Model {
+export class SubUnit extends Model {
   @Column({
     type: DataType.INTEGER,
     autoIncrement: true,
@@ -26,31 +26,30 @@ export class Workflow extends Model {
   })
   id!: number;
 
-  @ForeignKey(() => Organization)
-  @Column({
-    type: DataType.INTEGER,
-    allowNull: false,
-  })
-  organizationId!: number;
-
-  @Column({
-    type: DataType.INTEGER,
-    allowNull: false,
-  })
-  formId!: number;
-
   @Column({
     type: DataType.STRING(255),
     allowNull: false,
-    unique: true,
   })
   name!: string;
+
+  @ForeignKey(() => Unit)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+  })
+  unitId!: number;
 
   @Column({
     type: DataType.TEXT,
     allowNull: true,
   })
   description?: string;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  financeCode?: string;
 
   @Column({
     type: DataType.BOOLEAN,
@@ -64,23 +63,19 @@ export class Workflow extends Model {
   @UpdatedAt
   updatedAt!: Date;
 
-  // Associations
-  @BelongsTo(() => Organization)
-  organization!: Organization;
-
-  @HasMany(() => Stage)
-  stages!: Stage[];
-
-  @HasMany(() => WorkflowRequest)
-  requests!: WorkflowRequest[];
+  @BelongsTo(() => Unit)
+  unit!: Unit;
 }
 
-export interface WorkflowAttributes {
+export interface UnitAttributes {
   id: number;
-  organizationId: number;
+  unitId: number;
   name: string;
   description?: string;
   isActive: boolean;
   createdAt?: Date;
   updatedAt?: Date;
 }
+
+export interface UnitCreationAttributes
+  extends Omit<UnitAttributes, "id" | "createdAt" | "updatedAt"> {}

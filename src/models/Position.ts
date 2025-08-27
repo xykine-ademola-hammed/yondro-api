@@ -1,10 +1,23 @@
-import { Table, Column, Model, DataType, HasMany, CreatedAt, UpdatedAt, ForeignKey, BelongsTo } from 'sequelize-typescript';
-import { Organization } from './Organization';
-import { Department } from './Department';
-import { Employee } from './Employee';
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  HasMany,
+  CreatedAt,
+  UpdatedAt,
+  ForeignKey,
+  BelongsTo,
+} from "sequelize-typescript";
+import { Organization } from "./Organization";
+import { Department } from "./Department";
+import { Employee } from "./Employee";
+import { EmployeePosition } from "./EmployeePosition";
+import { Unit } from "./Unit";
+import { SchoolOrOffice } from "./SchoolOrOffice";
 
 @Table({
-  tableName: 'positions',
+  tableName: "positions",
   timestamps: true,
   underscored: true,
 })
@@ -23,12 +36,26 @@ export class Position extends Model {
   })
   organizationId!: number;
 
+  @ForeignKey(() => SchoolOrOffice)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  schoolOrOfficeId?: number;
+
   @ForeignKey(() => Department)
   @Column({
     type: DataType.INTEGER,
-    allowNull: false,
+    allowNull: true,
   })
-  departmentId!: number;
+  departmentId?: number;
+
+  @ForeignKey(() => Unit)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  unitId?: number;
 
   @Column({
     type: DataType.STRING(255),
@@ -48,6 +75,26 @@ export class Position extends Model {
   })
   isActive!: boolean;
 
+  @ForeignKey(() => Position)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  parentPositionId?: number;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
+  })
+  hierarchyLevel!: number;
+
+  @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  hierarchyPath?: string;
+
   @CreatedAt
   createdAt!: Date;
 
@@ -61,8 +108,32 @@ export class Position extends Model {
   @BelongsTo(() => Department)
   department!: Department;
 
+  @BelongsTo(() => SchoolOrOffice)
+  schoolOrOffice!: SchoolOrOffice;
+
   @HasMany(() => Employee)
   employees!: Employee[];
+
+  @BelongsTo(() => Position, {
+    foreignKey: "parentPositionId",
+    as: "parentPosition",
+  })
+  parentPosition?: Position;
+
+  @BelongsTo(() => Unit, {
+    foreignKey: "unitId",
+    as: "unit",
+  })
+  unit?: Unit;
+
+  @HasMany(() => Position, {
+    foreignKey: "parentPositionId",
+    as: "childPositions",
+  })
+  childPositions?: Position[];
+
+  @HasMany(() => EmployeePosition)
+  employeePositions!: EmployeePosition[];
 }
 
 export interface PositionAttributes {
@@ -72,6 +143,11 @@ export interface PositionAttributes {
   title: string;
   description?: string;
   isActive: boolean;
+  hierarchyLevel: number;
+  hierarchyPath?: string;
+  parentPositionId?: number;
+  schoolOrOfficeId?: number;
+  unitId?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }

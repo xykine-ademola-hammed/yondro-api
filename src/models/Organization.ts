@@ -1,14 +1,22 @@
-import { Table, Column, Model, DataType, HasMany, CreatedAt, UpdatedAt } from 'sequelize-typescript';
-import { Department } from './Department';
-import { Position } from './Position';
-import { Employee } from './Employee';
-import { Workflow } from './Workflow';
-import { Stage } from './Stage';
-import { WorkflowRequest } from './WorkflowRequest';
-import { WorkflowInstanceStage } from './WorkflowInstanceStage';
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  HasMany,
+  CreatedAt,
+  UpdatedAt,
+} from "sequelize-typescript";
+import { Department } from "./Department";
+import { Position } from "./Position";
+import { Employee } from "./Employee";
+import { Workflow } from "./Workflow";
+import { Stage } from "./Stage";
+import { WorkflowRequest } from "./WorkflowRequest";
+import { WorkflowInstanceStage } from "./WorkflowInstanceStage";
 
 @Table({
-  tableName: 'organizations',
+  tableName: "organizations",
   timestamps: true,
   underscored: true,
 })

@@ -4,6 +4,7 @@ import {
   Stage,
   Workflow,
   Employee,
+  Position,
 } from "../models";
 import {
   WorkflowRequestStatus,
@@ -13,7 +14,7 @@ import {
   NextStageResponse,
 } from "../types";
 import { StageUtils, subStageActorType } from "../utils/stageUtils";
-import { Op } from "sequelize";
+import { Op, where } from "sequelize";
 
 export class WorkflowExecutionService {
   /**
@@ -22,9 +23,9 @@ export class WorkflowExecutionService {
   static async startWorkflowRequest(
     workflowId: number,
     requestorId: number,
-    nextStageEmployeeId: number,
     actedByUserId?: number,
-    fieldResponses?: any
+    formResponses?: any,
+    user?: any
   ): Promise<WorkflowRequest> {
     // Get the workflow and its first stage
     const workflow = await Workflow.findByPk(workflowId, {
@@ -49,14 +50,27 @@ export class WorkflowExecutionService {
 
     // Create workflow request
     const workflowRequest = await WorkflowRequest.create({
+      formId: workflow.formId,
+      formResponses: {
+        ...formResponses,
+        requestor: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          date: new Date(),
+          department: user.department.name,
+          position: user.position.title,
+        },
+      },
       workflowId,
       requestorId,
       organizationId: workflow.organizationId,
       status: WorkflowRequestStatus.PENDING,
+      createdBy: actedByUserId || user.id,
     });
 
+    console.log("```Workflow request created:", workflowRequest.id);
     // Assign user for first stage
-    let assignedToUserId: number = requestorId;
+    let assignedToUserId: number = user.id;
 
     // Create first workflow instance stage
     const firstInstanceStage = await WorkflowInstanceStage.create({
@@ -65,34 +79,61 @@ export class WorkflowExecutionService {
       step: firstStage.step,
       assignedToUserId,
       status: WorkflowInstanceStageStatus.SUBMITTED,
-      fieldResponses,
+      fieldResponses: firstStage.formFields.map((field: string) => ({
+        field: formResponses[field],
+      })),
       stageId: firstStage.id,
       isSubStage: false,
       isResubmission: false,
       actedByUserId,
       organizationId: workflow.organizationId,
     });
-
+    console.log("```222-----Workflow request created:", assignedToUserId);
     // If first stage requires internal loop, create sub-stages
-    if (firstStage.requiresInternalLoop) {
-      await StageUtils.ensureInternalStagesExist(
-        workflowRequest.id,
-        firstInstanceStage,
-        firstStage
-      );
+    if (firstStage.isSubStage) {
+      // Create sub-stages
     } else {
       // Then create the next stage WorkflowInstanceStage without fieldResponses
-      const secondStage = workflow.stages[1];
-      let assignedToUserId = nextStageEmployeeId;
-      if (!nextStageEmployeeId) {
+      let secondStage = workflow.stages[1];
+
+      // Jump step if user hierarchyLevel is 3
+      if (user.position.hierarchyLevel === 3) {
+        await WorkflowInstanceStage.create({
+          workflowRequestId: workflowRequest.id,
+          stageName: secondStage.name,
+          step: secondStage.step,
+          assignedToUserId: actedByUserId,
+          status: WorkflowInstanceStageStatus.APPROVED,
+          fieldResponses: {},
+          stageId: secondStage.id,
+          isSubStage: false,
+          isResubmission: false,
+          actedByUserId,
+          organizationId: workflow.organizationId,
+        });
+        secondStage = workflow.stages[2];
+      }
+
+      let assignedToUserId;
+
+      const requestorParent = await this.getRequestorParent(requestorId);
+      if (requestorParent) {
+        assignedToUserId = requestorParent.id;
+      }
+
+      // check if the second stage need an employee to be assigned
+      if (secondStage.assigineeLookupField) {
+        assignedToUserId = formResponses[secondStage.assigineeLookupField];
+      } else if (secondStage.assigneePositionId) {
         const nextStageemployee = await Employee.findOne({
           where: {
-            departmentId: secondStage.assignee.departmentId,
-            positionId: secondStage.assignee.positionId,
+            positionId: secondStage.assigneePositionId,
           },
         });
         if (nextStageemployee) assignedToUserId = nextStageemployee?.id;
       }
+
+      console.log("``3333`Workflow assignedToUserId", assignedToUserId);
 
       await WorkflowInstanceStage.create({
         workflowRequestId: workflowRequest.id,
@@ -110,6 +151,22 @@ export class WorkflowExecutionService {
     }
 
     return workflowRequest;
+  }
+
+  static async getRequestorParent(requestorId: number) {
+    const requestor = await Employee.findByPk(requestorId, {
+      include: [Position],
+    });
+
+    const parentPosition = await Position.findByPk(
+      requestor?.position.parentPositionId,
+      { include: [Employee] }
+    );
+
+    console.log("-----0.1--------", parentPosition?.employees);
+
+    const requestorParent = parentPosition?.employees[0];
+    return requestorParent;
   }
 
   /**
@@ -157,12 +214,32 @@ export class WorkflowExecutionService {
       const stage = await WorkflowInstanceStage.findByPk(data.stageId, {
         include: [
           { model: Stage, as: "stage" },
-          { model: WorkflowRequest, as: "request" },
+          { model: WorkflowRequest, as: "request", include: [Workflow] },
         ],
       });
 
       if (!stage) {
         throw new Error("Stage not found");
+      }
+
+      const approvers = data?.formResponses?.approvers ?? [];
+      approvers.push({
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        date: new Date(),
+        schoolOrOffice: data?.user?.schoolOrOffice?.name,
+        department: data?.user?.department?.name,
+        position: data?.user?.position?.title,
+      });
+
+      const [affectedRows] = await WorkflowRequest.update(
+        { formResponses: { ...data.formResponses, approvers } },
+        {
+          where: { id: stage.workflowRequestId },
+        }
+      );
+      if (affectedRows !== 1) {
+        console.log("Handle error: no record or multiple records updated");
       }
 
       if (stage.status !== WorkflowInstanceStageStatus.PENDING) {
@@ -184,39 +261,42 @@ export class WorkflowExecutionService {
       });
 
       if (data.action === "Reject") {
+        console.log("Sibl=======data.action=======jected:", data.action);
         if (stage.isSubStage) {
           const siblingStages = await WorkflowInstanceStage.findAll({
             where: {
               workflowRequestId: stage.workflowRequestId,
-              parentStageId: stage.parentStageId,
+              parentStep: stage.parentStep,
               step: {
-                [Op.lt]: stage.step, // Use Op.lte for "less than or equal to"
+                [Op.lte]: stage.step, // Use Op.lte for "less than or equal to"
               },
               isSubStage: true,
-              status: { [Op.ne]: "Rejected" },
+              status: { [Op.ne]: "Pending" },
             },
             order: [["step", "ASC"]],
           });
 
-          siblingStages.push(stage);
-
-          const stageActors: subStageActorType[] = siblingStages.map(
-            (sibling) => ({
-              assignedToUserId: sibling.assignedToUserId,
-              subStageName: sibling.stageName,
-            })
-          );
-
-          const parentStageId = stage.parentStageId;
-
-          await StageUtils.createInternalLoopStages(
-            stage.workflowRequestId,
-            stage,
-            stageActors,
-            stage.step,
-            true,
-            parentStageId
-          );
+          if (siblingStages.length > 0) {
+            for (let i = 0; i < siblingStages.length; i++) {
+              await siblingStages[i].update({
+                // status: WorkflowInstanceStageStatus.REJECTED,
+                isResubmission: true,
+              });
+              await WorkflowInstanceStage.create({
+                isSubStage: true,
+                isResubmission: false,
+                stageName: siblingStages[i]?.stageName,
+                step: siblingStages[i].step,
+                parentStep: siblingStages[i].parentStep,
+                workflowRequestId: stage.workflowRequestId,
+                assignedToUserId: siblingStages[i].assignedToUserId,
+                status: WorkflowInstanceStageStatus.PENDING,
+                fieldResponses: {},
+                stageId: siblingStages[i].stageId,
+                organizationId: siblingStages[i].organizationId,
+              });
+            }
+          }
         } else {
           await stage.request!.update({
             status: WorkflowRequestStatus.REJECTED,
@@ -228,124 +308,113 @@ export class WorkflowExecutionService {
 
       // Handle approval
       if (stage.isSubStage) {
-        console.log("=====2=====");
-
         // Check if this is the final sub-stage (Approver)
         const siblingStages = await WorkflowInstanceStage.findAll({
           where: {
             workflowRequestId: stage.workflowRequestId,
-            parentStageId: stage.parentStageId,
+            parentStep: stage.parentStep,
             isSubStage: true,
           },
-          order: [["step", "DESC"]],
+          order: [
+            ["step", "DESC"],
+            ["createdAt", "DESC"],
+          ],
         });
-
-        console.log("=====3=====");
 
         const isLastSubStage = siblingStages[0].id === stage.id;
 
         if (isLastSubStage) {
           // Create next main stage
-          const currentMainStep = Math.floor(stage.step);
-          const nextMainStage = await StageUtils.createNextMainStage(
-            stage.workflowRequestId,
-            currentMainStep
-          );
+          // Get next main stage from workflow
+          const nextStage = await StageUtils.createNextMainStage(data, stage);
 
-          if (!nextMainStage) {
-            // No more stages - mark request as approved
+          // No more stages - mark request as approved
+          if (!nextStage) {
             await stage.request!.update({
               status: WorkflowRequestStatus.APPROVED,
             });
-          } else if (
-            nextMainStage.stage &&
-            nextMainStage.stage.requiresInternalLoop
-          ) {
-            // Create internal stages for next main stage
-            await StageUtils.ensureInternalStagesExist(
-              stage.workflowRequestId,
-              nextMainStage,
-              nextMainStage.stage
-            );
           }
         }
 
-        console.log("=====4=====");
+        return;
       } else {
-        console.log("=====5=====", stage.stage.fields);
-        const stageFieldData = data?.fieldResponses?.filter(
-          (field: any) => field.type === "stage"
-        );
+        // if nest stage is a subStage, then create internal stages
+        const subStages = await Stage.findAll({
+          where: {
+            workflowId: stage.request.workflowId,
+            parentStep: Number(stage.step),
+            isSubStage: true,
+          },
+          order: [["step", "ASC"]],
+        });
 
-        if (stageFieldData.length > 1) {
-          // Create inter-oops and return
-          const stageActors: subStageActorType[] = stageFieldData.map(
-            (data: any) => ({
-              subStageName: String(data.label),
-              assignedToUserId: Number(data.value),
-            })
-          );
+        if (subStages.length > 0) {
+          for (let i = 0; i < subStages.length; i++) {
+            let assignedToUserId: number = data.actedByUserId;
+            console.log("PPPPPPP====COOOOLLLLLLLL", data?.formResponses);
+            console.log(
+              "---------data?.formResponses------",
+              data?.formResponses["auditPreparedById"]
+            );
 
-          const baseStep = stage.step;
+            // check if the second stage need an employee to be assigned
+            if (
+              subStages[i].assigineeLookupField &&
+              data?.formResponses &&
+              data?.formResponses[subStages[i].assigineeLookupField]
+            ) {
+              console.log(
+                "==================================",
+                subStages[i].assigineeLookupField
+              );
+              assignedToUserId =
+                data?.formResponses[subStages[i].assigineeLookupField];
+            } else {
+              const subStageEmployee = await Employee.findOne({
+                where: {
+                  positionId: subStages[i].assigneePositionId,
+                },
+              });
+              if (subStageEmployee) assignedToUserId = subStageEmployee?.id;
+            }
 
-          await StageUtils.createInternalLoopStages(
-            stage.workflowRequestId,
-            stage,
-            stageActors,
-            baseStep
-          );
-
-          return;
-        }
-        // Main stage approved
-        if (stage.stage!.requiresInternalLoop) {
-          // Internal stages should already exist, just continue
-          return;
-        } else {
-          // Create next main stage
-          const nextMainStage = await StageUtils.createNextMainStage(
-            stage.workflowRequestId,
-            Number(stage.step)
-          );
-
-          console.log("=====6=====");
-
-          if (!nextMainStage) {
-            // No more stages - mark request as approved
-            await stage.request!.update({
-              status: WorkflowRequestStatus.APPROVED,
+            await WorkflowInstanceStage.create({
+              ...subStages[i],
+              isSubStage: true,
+              isResubmission: false,
+              stageName: subStages[i].name,
+              step: subStages[i].step,
+              parentStep: subStages[i].parentStep,
+              workflowRequestId: stage.workflowRequestId,
+              assignedToUserId,
+              status: WorkflowInstanceStageStatus.PENDING,
+              fieldResponses: {},
+              stageId: subStages[i].id,
+              organizationId: subStages[i].organizationId,
             });
+          }
+        } else {
+          // Main stage approved
+          // Get next main stage from workflow
+          const nextStage = await StageUtils.createNextMainStage(data, stage);
 
-            console.log("=====7=====");
-          } else if (
-            nextMainStage.stage &&
-            nextMainStage.stage.requiresInternalLoop
-          ) {
-            console.log("=====8=====");
-            // Create internal stages for next main stage
-            await StageUtils.ensureInternalStagesExist(
-              stage.workflowRequestId,
-              nextMainStage,
-              nextMainStage.stage
+          // No more stages - mark request as approved
+          if (!nextStage) {
+            await WorkflowRequest.update(
+              { status: WorkflowRequestStatus.APPROVED },
+              {
+                where: {
+                  id: stage.request.id,
+                },
+              }
             );
           }
+
+          return;
         }
       }
     } catch (error) {
       console.log("-----------------------------D-RRRR--------", error);
     }
-  }
-
-  /**
-   * Sends back a stage within internal loop
-   */
-  static async sendBackInternalStage(
-    data: InternalSendBackData & { actedByUserId: number }
-  ): Promise<void> {
-    await StageUtils.handleInternalRejection(
-      data.stageId,
-      data.comment,
-      data.sentBackToRole
-    );
   }
 }

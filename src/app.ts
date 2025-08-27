@@ -51,6 +51,22 @@ export const initializeDatabase = async (): Promise<void> => {
         process.env.DB_FORCE_SYNC === "true",
     });
     console.log("Database models synchronized successfully.");
+
+    // Auto-seed in development if no data exists
+    if (
+      process.env.NODE_ENV === "development" &&
+      process.env.AUTO_SEED === "true"
+    ) {
+      const { DatabaseSeeder } = await import("./seeders");
+      const { Organization } = await import("./models");
+
+      const orgCount = await Organization.count();
+      if (orgCount === 0) {
+        console.log("🌱 No data found, running auto-seed...");
+        const seeder = new DatabaseSeeder(sequelize);
+        await seeder.run();
+      }
+    }
   } catch (error) {
     console.error("Unable to connect to the database:", error);
     throw error;

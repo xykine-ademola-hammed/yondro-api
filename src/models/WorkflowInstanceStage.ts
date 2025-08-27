@@ -85,7 +85,7 @@ export class WorkflowInstanceStage extends Model {
     type: DataType.INTEGER,
     allowNull: true,
   })
-  parentStageId?: number;
+  parentStep?: number;
 
   @Column({
     type: DataType.BOOLEAN,
@@ -146,12 +146,6 @@ export class WorkflowInstanceStage extends Model {
 
   @BelongsTo(() => Stage)
   stage!: Stage;
-
-  @BelongsTo(() => WorkflowInstanceStage, "parentStageId")
-  parentStage!: WorkflowInstanceStage;
-
-  @HasMany(() => WorkflowInstanceStage, "parentStageId")
-  subStages!: WorkflowInstanceStage[];
 }
 
 export interface WorkflowInstanceStageAttributes {

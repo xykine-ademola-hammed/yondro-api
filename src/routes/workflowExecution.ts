@@ -16,6 +16,24 @@ router.post(
   authenticate,
   WorkflowExecutionController.getWorkflowRequests
 );
+
+router.post(
+  "/workflowrequest/get-workflow-request-tasks",
+  authenticate,
+  WorkflowExecutionController.getWorkflowRequestTasks
+);
+
+router.post(
+  "/workflowrequest/get-workflow-request-for-processing",
+  authenticate,
+  WorkflowExecutionController.getWorkflowRequestForProcessing
+);
+
+router.post(
+  "/workflowrequest/get-request-history",
+  authenticate,
+  WorkflowExecutionController.getRequestHistory
+);
 router.get(
   "/workflowrequest/next-stage/:requestId",
   authenticate,

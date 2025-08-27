@@ -1,12 +1,16 @@
-import 'reflect-metadata';
-import { Organization } from './Organization';
-import { Department } from './Department';
-import { Position } from './Position';
-import { Employee } from './Employee';
-import { Workflow } from './Workflow';
-import { Stage } from './Stage';
-import { WorkflowRequest } from './WorkflowRequest';
-import { WorkflowInstanceStage } from './WorkflowInstanceStage';
+import "reflect-metadata";
+import { Organization } from "./Organization";
+import { Department } from "./Department";
+import { Position } from "./Position";
+import { Employee } from "./Employee";
+import { Workflow } from "./Workflow";
+import { Stage } from "./Stage";
+import { WorkflowRequest } from "./WorkflowRequest";
+import { WorkflowInstanceStage } from "./WorkflowInstanceStage";
+import { EmployeePosition } from "./EmployeePosition";
+import { SchoolOrOffice } from "./SchoolOrOffice";
+import { Unit } from "./Unit";
+import { SubUnit } from "./SubUnit";
 
 // Export all models
 export {
@@ -17,7 +21,11 @@ export {
   Workflow,
   Stage,
   WorkflowRequest,
-  WorkflowInstanceStage
+  WorkflowInstanceStage,
+  EmployeePosition,
+  SchoolOrOffice,
+  Unit,
+  SubUnit,
 };
 
 // Note: Associations are now defined using decorators in the model files

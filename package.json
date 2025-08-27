@@ -8,9 +8,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
-     "sync-table": "ts-node src/sync.ts"
+    "sync-table": "ts-node src/sync.ts",
+    "seed": "ts-node src/scripts/seed.ts",
+    "seed:clear": "ts-node src/scripts/seed.ts --clear"
   },
   "dependencies": {
+    "@faker-js/faker": "^9.9.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
