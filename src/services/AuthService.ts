@@ -1,6 +1,13 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { Employee, Department, Position, Organization } from "../models";
+import {
+  Employee,
+  Department,
+  Position,
+  Organization,
+  SchoolOrOffice,
+  Unit,
+} from "../models";
 import {
   LoginRequest,
   SignUpRequest,
@@ -35,6 +42,8 @@ export class AuthService {
       departmentId: employee.departmentId,
       positionId: employee.positionId,
       role: employee.role as UserRole,
+      department: employee.department,
+      position: employee.position,
     };
   }
 
@@ -44,24 +53,15 @@ export class AuthService {
   static async login(loginData: LoginRequest): Promise<any> {
     const { email, password } = loginData;
 
+    console.log("----email------", email, password);
+
     // Find user by email
     const employee = await Employee.findOne({
       where: {
         email: email.toLowerCase(),
         isActive: true,
       },
-      include: [
-        {
-          model: Department,
-          as: "department",
-          include: [{ model: Organization, as: "organization" }],
-        },
-        {
-          model: Position,
-          as: "position",
-          attributes: ["id", "title"],
-        },
-      ],
+      include: [Organization, Department, Position, Unit],
     });
 
     if (!employee) {
@@ -71,18 +71,15 @@ export class AuthService {
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, employee.password);
     if (!isPasswordValid) {
-      throw new Error("Invalid email or password");
+      throw new Error("Invalid password");
     }
 
     // Convert to plain object to avoid circular references
     const employeeData = employee.get({ plain: true });
-    const organization = employeeData.department?.organization;
-
     // Generate token
     const token = this.generateToken(employee.id);
-
     return {
-      user: { ...employeeData, organization },
+      user: { ...employeeData },
       token,
       expiresIn: this.JWT_EXPIRES_IN,
     };
@@ -177,14 +174,24 @@ export class AuthService {
         where: { isActive: true, id: decoded.userId },
         include: [
           {
+            model: SchoolOrOffice,
+            as: "schoolOrOffice",
+            attributes: ["id", "name", "financeCode"],
+          },
+          {
             model: Department,
             as: "department",
-            attributes: ["id", "name"],
+            attributes: ["id", "name", "financeCode"],
+          },
+          {
+            model: Unit,
+            as: "unit",
+            attributes: ["id", "name", "financeCode"],
           },
           {
             model: Position,
             as: "position",
-            attributes: ["id", "title"],
+            attributes: ["id", "title", "hierarchyLevel"],
           },
         ],
       });

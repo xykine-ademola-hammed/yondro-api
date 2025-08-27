@@ -130,7 +130,7 @@ export class StageUtils {
 
     console.log(
       "---------------END------2-------------------------",
-      nextStage
+      nextStage?.step
     );
 
     if (!nextStage) {
@@ -140,22 +140,45 @@ export class StageUtils {
 
     console.log(
       "---------------END------3-------------------------",
-      nextStage
+      nextStage?.step,
+      nextStage?.assigneePositionId
     );
 
-    let assignedToUserId: number = data.actedByUserId;
+    let assignedToUserId: number;
 
-    // check if the second stage need an employee to be assigned
-    if (nextStage?.assigineeLookupField && data?.formResponses) {
+    // check if the next stage need an employee to be assigned
+    if (
+      nextStage?.assigineeLookupField &&
+      data?.formResponses[nextStage?.assigineeLookupField]
+    ) {
       assignedToUserId = data?.formResponses[nextStage?.assigineeLookupField];
-    } else {
-      const subStageEmployee = await Employee.findOne({
+    } else if (nextStage?.assigneePositionId) {
+      const employee = await Employee.findOne({
         where: {
-          departmentId: nextStage?.assigneeDepartmentId,
           positionId: nextStage?.assigneePositionId,
         },
       });
-      if (subStageEmployee) assignedToUserId = subStageEmployee?.id;
+      console.log(
+        "---------------END------4-------------------------",
+        employee?.id
+      );
+
+      if (employee) assignedToUserId = employee?.id;
+    } else {
+      // Fallback to the parent [supervisor]
+      const requestor = await Employee.findByPk(data.actedByUserId, {
+        include: [Position],
+      });
+
+      const parentPosition = await Position.findByPk(
+        requestor?.position.parentPositionId,
+        { include: [Employee] }
+      );
+
+      console.log("-----0.1--------", parentPosition?.employees);
+
+      const requestorParent = parentPosition?.employees[0];
+      if (requestorParent) assignedToUserId = requestorParent.id;
     }
 
     await WorkflowInstanceStage.create({

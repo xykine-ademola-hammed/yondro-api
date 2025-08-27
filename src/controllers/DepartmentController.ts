@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
-import { Department, Organization, Employee, Position } from "../models";
+import { Department, Organization, Employee, Position, Unit } from "../models";
 import { buildWhereClause, Filter } from "../utils/filterWhereBuilder";
 
 export class DepartmentController {
@@ -11,7 +11,8 @@ export class DepartmentController {
    */
   static async create(req: Request, res: Response): Promise<void> {
     try {
-      const { organizationId, name, description } = req.body;
+      const { organizationId, name, description, units, financeCode } =
+        req.body;
 
       if (!organizationId || !name) {
         res.status(400).json({
@@ -26,7 +27,16 @@ export class DepartmentController {
           name,
           description,
           isActive: true,
+          hasUnits: !!units.length,
+          financeCode: financeCode,
         });
+
+      for (let unit of units) {
+        // const createdUnit = await create Unit passing the departmentId and financeCode (department.id, unit.name, unit.financeCode)
+        for (let subUnit of unit.subUnits) {
+          // const createdSubUnit = await createSubUnit (createdUnitId, subUnit.financeCode, subUnit.name )
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -64,6 +74,10 @@ export class DepartmentController {
               model: Employee,
               as: "employees",
               attributes: ["id", "firstName", "lastName", "isActive"],
+            },
+            {
+              model: Unit,
+              as: "units",
             },
           ],
         });

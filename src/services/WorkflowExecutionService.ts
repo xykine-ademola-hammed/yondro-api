@@ -4,6 +4,7 @@ import {
   Stage,
   Workflow,
   Employee,
+  Position,
 } from "../models";
 import {
   WorkflowRequestStatus,
@@ -23,7 +24,8 @@ export class WorkflowExecutionService {
     workflowId: number,
     requestorId: number,
     actedByUserId?: number,
-    formResponses?: any
+    formResponses?: any,
+    user?: any
   ): Promise<WorkflowRequest> {
     // Get the workflow and its first stage
     const workflow = await Workflow.findByPk(workflowId, {
@@ -49,17 +51,26 @@ export class WorkflowExecutionService {
     // Create workflow request
     const workflowRequest = await WorkflowRequest.create({
       formId: workflow.formId,
-      formResponses,
+      formResponses: {
+        ...formResponses,
+        requestor: {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          date: new Date(),
+          department: user.department.name,
+          position: user.position.title,
+        },
+      },
       workflowId,
       requestorId,
       organizationId: workflow.organizationId,
       status: WorkflowRequestStatus.PENDING,
-      createdBy: actedByUserId || requestorId,
+      createdBy: actedByUserId || user.id,
     });
 
     console.log("```Workflow request created:", workflowRequest.id);
     // Assign user for first stage
-    let assignedToUserId: number = requestorId;
+    let assignedToUserId: number = user.id;
 
     // Create first workflow instance stage
     const firstInstanceStage = await WorkflowInstanceStage.create({
@@ -85,18 +96,37 @@ export class WorkflowExecutionService {
       // Then create the next stage WorkflowInstanceStage without fieldResponses
       let secondStage = workflow.stages[1];
 
-      let assignedToUserId: number = requestorId;
+      // Jump step if user hierarchyLevel is 3
+      if (user.position.hierarchyLevel === 3) {
+        await WorkflowInstanceStage.create({
+          workflowRequestId: workflowRequest.id,
+          stageName: secondStage.name,
+          step: secondStage.step,
+          assignedToUserId: actedByUserId,
+          status: WorkflowInstanceStageStatus.APPROVED,
+          fieldResponses: {},
+          stageId: secondStage.id,
+          isSubStage: false,
+          isResubmission: false,
+          actedByUserId,
+          organizationId: workflow.organizationId,
+        });
+        secondStage = workflow.stages[2];
+      }
+
+      let assignedToUserId;
+
+      const requestorParent = await this.getRequestorParent(requestorId);
+      if (requestorParent) {
+        assignedToUserId = requestorParent.id;
+      }
 
       // check if the second stage need an employee to be assigned
       if (secondStage.assigineeLookupField) {
-        console.log("-----1--------", secondStage);
         assignedToUserId = formResponses[secondStage.assigineeLookupField];
-      } else {
-        console.log("-----2--------", secondStage.assigineeLookupField);
-
+      } else if (secondStage.assigneePositionId) {
         const nextStageemployee = await Employee.findOne({
           where: {
-            departmentId: secondStage.assigneeDepartmentId,
             positionId: secondStage.assigneePositionId,
           },
         });
@@ -121,6 +151,22 @@ export class WorkflowExecutionService {
     }
 
     return workflowRequest;
+  }
+
+  static async getRequestorParent(requestorId: number) {
+    const requestor = await Employee.findByPk(requestorId, {
+      include: [Position],
+    });
+
+    const parentPosition = await Position.findByPk(
+      requestor?.position.parentPositionId,
+      { include: [Employee] }
+    );
+
+    console.log("-----0.1--------", parentPosition?.employees);
+
+    const requestorParent = parentPosition?.employees[0];
+    return requestorParent;
   }
 
   /**
@@ -168,7 +214,7 @@ export class WorkflowExecutionService {
       const stage = await WorkflowInstanceStage.findByPk(data.stageId, {
         include: [
           { model: Stage, as: "stage" },
-          { model: WorkflowRequest, as: "request" },
+          { model: WorkflowRequest, as: "request", include: [Workflow] },
         ],
       });
 
@@ -176,8 +222,18 @@ export class WorkflowExecutionService {
         throw new Error("Stage not found");
       }
 
+      const approvers = data?.formResponses?.approvers ?? [];
+      approvers.push({
+        firstName: data.user.firstName,
+        lastName: data.user.lastName,
+        date: new Date(),
+        schoolOrOffice: data?.user?.schoolOrOffice?.name,
+        department: data?.user?.department?.name,
+        position: data?.user?.position?.title,
+      });
+
       const [affectedRows] = await WorkflowRequest.update(
-        { formResponses: data.formResponses },
+        { formResponses: { ...data.formResponses, approvers } },
         {
           where: { id: stage.workflowRequestId },
         }
@@ -223,7 +279,7 @@ export class WorkflowExecutionService {
           if (siblingStages.length > 0) {
             for (let i = 0; i < siblingStages.length; i++) {
               await siblingStages[i].update({
-                status: WorkflowInstanceStageStatus.REJECTED,
+                // status: WorkflowInstanceStageStatus.REJECTED,
                 isResubmission: true,
               });
               await WorkflowInstanceStage.create({
@@ -259,9 +315,14 @@ export class WorkflowExecutionService {
             parentStep: stage.parentStep,
             isSubStage: true,
           },
-          order: [["step", "DESC"]],
+          order: [
+            ["step", "DESC"],
+            ["createdAt", "DESC"],
+          ],
         });
+
         const isLastSubStage = siblingStages[0].id === stage.id;
+
         if (isLastSubStage) {
           // Create next main stage
           // Get next main stage from workflow
@@ -277,26 +338,40 @@ export class WorkflowExecutionService {
 
         return;
       } else {
-        // if stage is a parentStep, then create internal stages
+        // if nest stage is a subStage, then create internal stages
         const subStages = await Stage.findAll({
           where: {
-            parentStep: stage.step,
+            workflowId: stage.request.workflowId,
+            parentStep: Number(stage.step),
             isSubStage: true,
           },
+          order: [["step", "ASC"]],
         });
 
         if (subStages.length > 0) {
           for (let i = 0; i < subStages.length; i++) {
             let assignedToUserId: number = data.actedByUserId;
+            console.log("PPPPPPP====COOOOLLLLLLLL", data?.formResponses);
+            console.log(
+              "---------data?.formResponses------",
+              data?.formResponses["auditPreparedById"]
+            );
 
             // check if the second stage need an employee to be assigned
-            if (subStages[i].assigineeLookupField && data?.formResponses) {
+            if (
+              subStages[i].assigineeLookupField &&
+              data?.formResponses &&
+              data?.formResponses[subStages[i].assigineeLookupField]
+            ) {
+              console.log(
+                "==================================",
+                subStages[i].assigineeLookupField
+              );
               assignedToUserId =
                 data?.formResponses[subStages[i].assigineeLookupField];
             } else {
               const subStageEmployee = await Employee.findOne({
                 where: {
-                  departmentId: subStages[i].assigneeDepartmentId,
                   positionId: subStages[i].assigneePositionId,
                 },
               });

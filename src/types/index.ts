@@ -40,6 +40,7 @@ export interface StageCompletionData {
   comment?: string;
   fieldResponses?: Record<string, any>;
   formResponses?: Record<string, any>;
+  user?: any;
 }
 
 export interface InternalSendBackData {
@@ -63,6 +64,8 @@ export interface AuthUser {
   departmentId: number;
   positionId: number;
   role: UserRole;
+  department: any;
+  position: any;
 }
 
 export enum UserRole {

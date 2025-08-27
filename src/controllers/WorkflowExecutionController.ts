@@ -40,12 +40,15 @@ export class WorkflowExecutionController {
         return;
       }
 
+      console.log("=================USER=====", req.user);
+
       const workflowRequest =
         await WorkflowExecutionService.startWorkflowRequest(
           workflowId,
           requestorId,
           actedByUserId,
-          formResponses
+          formResponses,
+          req.user
         );
 
       res.status(201).json({
@@ -93,6 +96,13 @@ export class WorkflowExecutionController {
                 where: {
                   isResubmission: false,
                 },
+                include: [
+                  {
+                    model: Employee,
+                    as: "assignedTo",
+                    include: [Department, Position],
+                  },
+                ],
               },
               {
                 model: Employee,
@@ -208,16 +218,15 @@ export class WorkflowExecutionController {
                 include: [
                   {
                     model: Stage,
-                    as: "stages", // Ensure this alias matches the orderby clause
+                    as: "stages",
                   },
                 ],
               },
-              WorkflowInstanceStage,
-              // {
-              //   model: WorkflowInstanceStage,
-              //   as: "stages",
-              //   // where: { assignedToUserId: req.user?.id, status },
-              // },
+              {
+                model: WorkflowInstanceStage,
+                as: "stages",
+                include: [{ model: Employee, as: "assignedTo" }],
+              },
               {
                 model: Employee,
                 as: "requestor",
@@ -348,7 +357,11 @@ export class WorkflowExecutionController {
         return;
       }
 
-      await WorkflowExecutionService.completeStage({ ...data, actedByUserId });
+      await WorkflowExecutionService.completeStage({
+        ...data,
+        actedByUserId,
+        user: req.user,
+      });
 
       res.json({
         success: true,

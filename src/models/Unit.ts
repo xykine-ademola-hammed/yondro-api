@@ -10,19 +10,15 @@ import {
   BelongsTo,
 } from "sequelize-typescript";
 import { Organization } from "./Organization";
-import { Position } from "./Position";
 import { Employee } from "./Employee";
-import { Stage } from "./Stage";
-import { EmployeePosition } from "./EmployeePosition";
-import { SchoolOrOffice } from "./SchoolOrOffice";
-import { Unit } from "./Unit";
+import { Department } from "./Department";
 
 @Table({
-  tableName: "departments",
+  tableName: "Units",
   timestamps: true,
   underscored: true,
 })
-export class Department extends Model {
+export class Unit extends Model {
   @Column({
     type: DataType.INTEGER,
     autoIncrement: true,
@@ -37,12 +33,13 @@ export class Department extends Model {
   })
   organizationId!: number;
 
-  @ForeignKey(() => SchoolOrOffice)
+  @ForeignKey(() => Department)
   @Column({
     type: DataType.INTEGER,
-    allowNull: false,
+    allowNull: true,
+    field: "department_id",
   })
-  schoolOrOfficeId!: number;
+  departmentId?: number | null;
 
   @Column({
     type: DataType.STRING(255),
@@ -68,6 +65,12 @@ export class Department extends Model {
   })
   isActive!: boolean;
 
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  hasSubUnits!: boolean;
+
   @CreatedAt
   createdAt!: Date;
 
@@ -78,27 +81,21 @@ export class Department extends Model {
   @BelongsTo(() => Organization)
   organization!: Organization;
 
-  // Associations
-  @BelongsTo(() => SchoolOrOffice)
-  schoolOrOffice!: SchoolOrOffice;
-
-  @HasMany(() => Position)
-  positions!: Position[];
-
-  @HasMany(() => Unit)
-  units!: Unit[];
+  @BelongsTo(() => Department, {
+    foreignKey: "departmentId", // or { name: 'departmentId', field: 'department_id' }
+    onDelete: "SET NULL",
+    onUpdate: "CASCADE",
+  })
+  department?: Department;
 
   @HasMany(() => Employee)
   employees!: Employee[];
-
-  @HasMany(() => Stage)
-  stages!: Stage[];
 }
 
-export interface DepartmentAttributes {
+export interface UnitAttributes {
   id: number;
   organizationId: number;
-  schoolOrOfficeId: number;
+  departmentId: number;
   name: string;
   description?: string;
   isActive: boolean;
@@ -106,5 +103,5 @@ export interface DepartmentAttributes {
   updatedAt?: Date;
 }
 
-export interface DepartmentCreationAttributes
-  extends Omit<DepartmentAttributes, "id" | "createdAt" | "updatedAt"> {}
+export interface UnitCreationAttributes
+  extends Omit<UnitAttributes, "id" | "createdAt" | "updatedAt"> {}

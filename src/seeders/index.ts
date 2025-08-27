@@ -3,6 +3,9 @@ import { OrganizationSeeder } from "./OrganizationSeeder";
 import { DepartmentSeeder } from "./DepartmentSeeder";
 import { PositionSeeder } from "./PositionSeeder";
 import { EmployeeSeeder } from "./EmployeeSeeder";
+import { SchoolOrOfficeSeeder } from "./20250823-full-schoolOrOffices.seeder";
+import { FullDepartmentSeeder } from "./20250823-full-departments.seeder";
+import { FullUnitSeeder } from "./20250823-units.seeder";
 
 export class DatabaseSeeder {
   private sequelize: Sequelize;
@@ -16,13 +19,18 @@ export class DatabaseSeeder {
 
     try {
       // Run seeders in order (respecting foreign key dependencies)
-      await OrganizationSeeder.run();
+      // await OrganizationSeeder.run();
       console.log("✅ Organizations seeded");
 
-      await DepartmentSeeder.run();
-      console.log("✅ Departments seeded");
+      // await SchoolOrOfficeSeeder.run();
+      console.log("✅ SchoolOrOfficeSeeder seeded");
 
-      await PositionSeeder.run();
+      // await FullDepartmentSeeder.run();
+      console.log("✅ FullDepartmentSeeder seeded");
+
+      // await FullUnitSeeder.run();
+
+      // await PositionSeeder.run();
       console.log("✅ Positions seeded");
 
       await EmployeeSeeder.run();
@@ -54,7 +62,15 @@ export class DatabaseSeeder {
       await this.sequelize.models.Workflow.destroy({ where: {}, force: true });
       await this.sequelize.models.Employee.destroy({ where: {}, force: true });
       await this.sequelize.models.Position.destroy({ where: {}, force: true });
+      await this.sequelize.models.Unit.destroy({
+        where: {},
+        force: true,
+      });
       await this.sequelize.models.Department.destroy({
+        where: {},
+        force: true,
+      });
+      await this.sequelize.models.SchoolOrOffice.destroy({
         where: {},
         force: true,
       });

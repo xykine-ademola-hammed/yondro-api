@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
-import { Position, Organization, Department } from "../models";
+import { Position, Organization, Department, SchoolOrOffice } from "../models";
 import { Op } from "sequelize";
 import { buildQueryWithIncludes, Filter } from "../utils/filterWhereBuilder";
 
@@ -12,31 +12,20 @@ export class PositionController {
    */
   static async create(req: Request, res: Response): Promise<void> {
     try {
-      const { organizationId, departmentId, title, description } = req.body;
+      const {
+        organizationId,
+        departmentId,
+        schoolOrOfficeId,
+        unitId,
+        parentPositionId,
+        title,
+        description,
+      } = req.body;
 
-      if (!organizationId || !departmentId || !title) {
+      if (!organizationId || !title) {
         res.status(400).json({
           success: false,
-          error: "organizationId, departmentId and title are required",
-        });
-        return;
-      }
-
-      // Verify organization and department exist
-      const organization = await Organization.findByPk(Number(organizationId));
-      if (!organization) {
-        res.status(404).json({
-          success: false,
-          error: "Organization not found",
-        });
-        return;
-      }
-
-      const department = await Department.findByPk(Number(departmentId));
-      if (!department) {
-        res.status(404).json({
-          success: false,
-          error: "Department not found",
+          error: "organizationId and title are required",
         });
         return;
       }
@@ -44,6 +33,9 @@ export class PositionController {
       const position = await PositionController.positionService.createOnly({
         organizationId,
         departmentId,
+        schoolOrOfficeId,
+        unitId,
+        parentPositionId,
         title,
         description,
         isActive: true,
@@ -75,7 +67,7 @@ export class PositionController {
           limit: limit ? Number(limit) : 10,
           search: search as string,
           where,
-          include: [Department],
+          include: [Department, SchoolOrOffice],
         });
 
       res.json(result);

@@ -25,6 +25,7 @@ export class EmployeeSeeder {
 
       employees.push({
         organizationId: position.organizationId,
+        schoolOrOfficeId: position.schoolOrOfficeId,
         departmentId: position.departmentId,
         positionId: position.id,
         firstName,
@@ -33,7 +34,7 @@ export class EmployeeSeeder {
         phone: faker.phone.number(),
         password: await bcrypt.hash("password", 12), // Will be hashed by the model hook
         role: "Admin",
-        isActive: faker.datatype.boolean(0.95),
+        isActive: true,
       });
     }
 
