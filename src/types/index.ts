@@ -61,11 +61,11 @@ export interface AuthUser {
   email: string;
   firstName: string;
   lastName: string;
-  departmentId: number;
-  positionId: number;
+  departmentId?: number | null;
+  positionId?: number;
   role: UserRole;
-  department: any;
-  position: any;
+  department?: any;
+  position?: any;
 }
 
 export enum UserRole {

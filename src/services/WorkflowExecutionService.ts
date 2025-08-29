@@ -10,11 +10,10 @@ import {
   WorkflowRequestStatus,
   WorkflowInstanceStageStatus,
   StageCompletionData,
-  InternalSendBackData,
   NextStageResponse,
 } from "../types";
-import { StageUtils, subStageActorType } from "../utils/stageUtils";
-import { Op, where } from "sequelize";
+import { StageUtils } from "../utils/stageUtils";
+import { Op } from "sequelize";
 
 export class WorkflowExecutionService {
   /**
@@ -351,11 +350,6 @@ export class WorkflowExecutionService {
         if (subStages.length > 0) {
           for (let i = 0; i < subStages.length; i++) {
             let assignedToUserId: number = data.actedByUserId;
-            console.log("PPPPPPP====COOOOLLLLLLLL", data?.formResponses);
-            console.log(
-              "---------data?.formResponses------",
-              data?.formResponses["auditPreparedById"]
-            );
 
             // check if the second stage need an employee to be assigned
             if (
@@ -363,10 +357,6 @@ export class WorkflowExecutionService {
               data?.formResponses &&
               data?.formResponses[subStages[i].assigineeLookupField]
             ) {
-              console.log(
-                "==================================",
-                subStages[i].assigineeLookupField
-              );
               assignedToUserId =
                 data?.formResponses[subStages[i].assigineeLookupField];
             } else {
