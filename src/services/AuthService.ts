@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import {
   Employee,
   Department,
@@ -17,7 +17,7 @@ import {
 } from "../types";
 
 export class AuthService {
-  private static readonly JWT_SECRET =
+  private static readonly JWT_SECRET: jwt.Secret =
     process.env.JWT_SECRET || "your-super-secret-jwt-key";
   private static readonly JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 
@@ -25,9 +25,10 @@ export class AuthService {
    * Generate JWT token for user
    */
   private static generateToken(userId: number): string {
-    return jwt.sign({ userId }, this.JWT_SECRET, {
-      expiresIn: this.JWT_EXPIRES_IN,
-    });
+    // Payload should be an object; secret should match the Secret type; options uses expiresIn
+    const payload = { userId };
+    const options: SignOptions = { expiresIn: Number(this.JWT_EXPIRES_IN) };
+    return jwt.sign(payload, this.JWT_SECRET, options);
   }
 
   /**
@@ -39,7 +40,7 @@ export class AuthService {
       email: employee.email,
       firstName: employee.firstName,
       lastName: employee.lastName,
-      departmentId: employee.departmentId,
+      departmentId: employee?.departmentId,
       positionId: employee.positionId,
       role: employee.role as UserRole,
       department: employee.department,
@@ -52,8 +53,6 @@ export class AuthService {
    */
   static async login(loginData: LoginRequest): Promise<any> {
     const { email, password } = loginData;
-
-    console.log("----email------", email, password);
 
     // Find user by email
     const employee = await Employee.findOne({
@@ -202,7 +201,8 @@ export class AuthService {
 
       return this.toAuthUser(employee);
     } catch (error) {
-      throw new Error("Invalid or expired token");
+      console.log("------------------------------");
+      throw new Error("Invalid or expired token " + error);
     }
   }
 

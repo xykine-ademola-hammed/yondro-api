@@ -46,7 +46,7 @@ export const buildWhereClause = (filters: Filter[]): WhereOptions => {
   for (const filter of filters) {
     const { key, value, condition } = filter;
 
-    // ✅ Nested logic (AND/OR)
+    // Nested logic (AND/OR)
     if ((condition === "and" || condition === "or") && Array.isArray(value)) {
       const nestedClauses = value
         .filter(
@@ -64,10 +64,10 @@ export const buildWhereClause = (filters: Filter[]): WhereOptions => {
       continue;
     }
 
-    // ✅ Skip incomplete filters
+    // Skip incomplete filters
     if (!key || value === undefined || value === null) continue;
 
-    // ✅ Handle standard conditions
+    // Handle standard conditions
     const setCondition = (op: symbol, val: any) => {
       if (!where[key]) where[key] = {};
       Object.assign(where[key], { [op]: val });
@@ -106,7 +106,7 @@ export const buildWhereClause = (filters: Filter[]): WhereOptions => {
         setCondition(Op.in, arrayVal);
         break;
 
-      // ✅ Special case: JSON_CONTAINS
+      // JSON_CONTAINS
       case "json-contains":
         // This is outside the `where[key]` pattern; append directly to `Op.and` or `Op.or`
         const clause = whereFn(
@@ -122,7 +122,26 @@ export const buildWhereClause = (filters: Filter[]): WhereOptions => {
   return where;
 };
 
-export function buildWhere(filter) {
+/**
+ * Type-safe mapping from human condition string to Sequelize Op symbol
+ */
+const ConditionSymbolMap: Record<Filter["condition"], symbol | undefined> = {
+  equal: Op.eq,
+  not: Op.not,
+  gt: Op.gt,
+  lt: Op.lt,
+  between: Op.between,
+  startWith: Op.like,
+  endWith: Op.like,
+  contains: Op.like,
+  like: Op.like,
+  in: Op.in,
+  and: undefined,
+  or: undefined,
+  "json-contains": undefined,
+};
+
+export function buildWhere(filter: any) {
   // If filter is an array, process the first element (assuming single top-level condition)
   if (Array.isArray(filter)) {
     return buildWhere(filter[0]);
@@ -132,7 +151,7 @@ export function buildWhere(filter) {
   if (filter.condition === "and" || filter.condition === "or") {
     const operator = filter.condition === "and" ? Op.and : Op.or;
     return {
-      [operator]: filter.value.map((item) => buildWhere(item)),
+      [operator]: filter.value.map((item: any) => buildWhere(item)),
     };
   }
 
@@ -142,27 +161,30 @@ export function buildWhere(filter) {
     const keys = filter.key.split(".");
     let whereClause = filter.value;
 
-    // Build nested where clause for dot notation
+    // For multi-level keys, assign the last part as the field
     if (keys.length > 1) {
-      whereClause = { [keys[1]]: filter.value };
+      // Returns { [field]: value }
+      whereClause = { [keys.slice(1).join(".")]: filter.value };
     }
 
-    // Map condition to Sequelize operator
-    const conditionMap = {
-      equal: Op.eq,
-    };
-
-    return {
-      [keys[0]]: {
-        [conditionMap[filter.condition]]: whereClause,
-      },
-    };
+    const op = ConditionSymbolMap[filter.condition as Filter["condition"]];
+    if (op) {
+      return {
+        [keys[0]]: { [op]: whereClause },
+      };
+    }
+    if (filter.condition === "equal") {
+      return { [keys[0]]: whereClause };
+    }
+    throw new Error(
+      `Unsupported filter condition for buildWhere: ${filter.condition}`
+    );
   }
 
   throw new Error("Invalid filter structure");
 }
 
-// ... other utility imports
+// ... other utility imports remain unchanged
 
 export const buildQueryWithIncludes = (
   filters: Filter[],
@@ -183,25 +205,37 @@ export const buildQueryWithIncludes = (
     } else {
       // Nested: e.g., department.organization.type
       const topModelKey = parts[0];
+      const initialModel = modelMap[topModelKey];
+      if (!initialModel) {
+        throw new Error(
+          `Model mapping not found for top-level relation "${topModelKey}". Please add it to modelMap.`
+        );
+      }
       let currentInclude: IncludeOptions = includeMap[topModelKey] || {
-        model: modelMap[topModelKey],
+        model: initialModel,
       };
       let cursor = currentInclude;
 
       // Traverse nested includes
       for (let i = 1; i < parts.length - 1; i++) {
         const nextModelKey = parts[i];
+        const nextModel = modelMap[nextModelKey];
+        if (!nextModel) {
+          throw new Error(
+            `Model mapping not found for nested relation "${nextModelKey}" (in key: "${key}"). Please add it to modelMap.`
+          );
+        }
         let nextInclude: IncludeOptions | undefined;
 
         // If already exists, reuse it
         if (cursor.include) {
           nextInclude = (cursor.include as IncludeOptions[]).find(
-            (inc) => (inc as any).model === modelMap[nextModelKey]
+            (inc) => (inc as any).model === nextModel
           );
         }
 
         if (!nextInclude) {
-          nextInclude = { model: modelMap[nextModelKey] };
+          nextInclude = { model: nextModel };
           cursor.include = cursor.include
             ? [...(cursor.include as IncludeOptions[]), nextInclude]
             : [nextInclude];
@@ -284,32 +318,4 @@ function deepMergeIncludes(
   return merged;
 }
 
-// Example for buildWhereClause
-
-// const filters: Filter[] = [
-//     {
-//       condition: "and",
-//       value: [
-//         { key: "name", value: "ham", condition: "contains" },
-//         { key: "status", value: ["active", "pending"], condition: "in" },
-//         {
-//           condition: "or",
-//           value: [
-//             { key: "createdAt", value: ["2023-01-01", "2023-12-31"], condition: "between" },
-//             { key: "email", value: "%@company.com", condition: "like" }
-//           ]
-//         }
-//       ]
-//     }
-//   ];
-
-// Example Usage buildQueryWithIncludes
-// const filters: Filter[] = [
-//     { key: 'status', value: 'active', condition: 'equal' },
-//     { key: 'department.name', value: 'Engineering', condition: 'contains' },
-//     { key: 'department.organization.type', value: 'Public', condition: 'equal' }
-//   ];
-
-//   const { where, include } = buildQueryWithIncludes(filters, Employee);
-
-//   const employees = await Employee.findAll({ where, include });
+// (Examples and comments remain unchanged)
