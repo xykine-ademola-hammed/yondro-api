@@ -64,6 +64,12 @@ export class Position extends Model {
   title!: string;
 
   @Column({
+    type: DataType.STRING(255),
+    allowNull: true,
+  })
+  category!: string;
+
+  @Column({
     type: DataType.TEXT,
     allowNull: true,
   })

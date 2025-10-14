@@ -6,6 +6,7 @@ import { EmployeeSeeder } from "./EmployeeSeeder";
 import { SchoolOrOfficeSeeder } from "./20250823-full-schoolOrOffices.seeder";
 import { FullDepartmentSeeder } from "./20250823-full-departments.seeder";
 import { FullUnitSeeder } from "./20250823-units.seeder";
+import { seedNcoaCodes } from "./ncoaSeeder";
 
 export class DatabaseSeeder {
   private sequelize: Sequelize;
@@ -33,8 +34,11 @@ export class DatabaseSeeder {
       // await PositionSeeder.run();
       console.log("✅ Positions seeded");
 
-      await EmployeeSeeder.run();
+      // await EmployeeSeeder.run();
       console.log("✅ Employees seeded");
+
+      console.log("✅ NCOA CODES seeded");
+      await seedNcoaCodes();
 
       console.log("🎉 Database seeding completed successfully!");
     } catch (error) {

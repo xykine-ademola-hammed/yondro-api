@@ -11,6 +11,7 @@ import {
   WorkflowInstanceStageStatus,
   StageCompletionData,
   NextStageResponse,
+  statusMapper,
 } from "../types";
 import { StageUtils } from "../utils/stageUtils";
 import { Op } from "sequelize";
@@ -56,8 +57,9 @@ export class WorkflowExecutionService {
           firstName: user.firstName,
           lastName: user.lastName,
           date: new Date(),
-          department: user.department.name,
-          position: user.position.title,
+          department: user?.department?.name,
+          position: user?.position?.title,
+          category: user.position.category,
         },
       },
       workflowId,
@@ -73,12 +75,12 @@ export class WorkflowExecutionService {
 
     // Create first workflow instance stage
     const firstInstanceStage = await WorkflowInstanceStage.create({
-      workflowRequestId: workflowRequest.id,
+      workflowRequestId: workflowRequest?.id,
       stageName: firstStage?.name,
-      step: firstStage.step,
+      step: firstStage?.step,
       assignedToUserId,
       status: WorkflowInstanceStageStatus.SUBMITTED,
-      fieldResponses: firstStage.formFields.map((field: string) => ({
+      fieldResponses: firstStage?.formFields?.map?.((field: string) => ({
         field: formResponses[field],
       })),
       stageId: firstStage.id,
@@ -108,7 +110,7 @@ export class WorkflowExecutionService {
           isSubStage: false,
           isResubmission: false,
           actedByUserId,
-          organizationId: workflow.organizationId,
+          organizationId: workflow?.organizationId,
         });
         secondStage = workflow.stages[2];
       }
@@ -229,6 +231,7 @@ export class WorkflowExecutionService {
         schoolOrOffice: data?.user?.schoolOrOffice?.name,
         department: data?.user?.department?.name,
         position: data?.user?.position?.title,
+        label: data.action,
       });
 
       const [affectedRows] = await WorkflowRequest.update(
@@ -244,13 +247,8 @@ export class WorkflowExecutionService {
       if (stage.status !== WorkflowInstanceStageStatus.PENDING) {
         throw new Error("Stage is not in pending status");
       }
-
       // Update current stage
-      const newStatus =
-        data.action === "Approve"
-          ? WorkflowInstanceStageStatus.APPROVED
-          : WorkflowInstanceStageStatus.REJECTED;
-
+      const newStatus = statusMapper[data.action] || statusMapper["Reject"];
       await stage.update({
         status: newStatus,
         fieldResponses: data.fieldResponses,
@@ -384,9 +382,12 @@ export class WorkflowExecutionService {
             });
           }
         } else {
+          console.log("--------------------------SU==2=====");
           // Main stage approved
           // Get next main stage from workflow
           const nextStage = await StageUtils.createNextMainStage(data, stage);
+
+          console.log("--------------------------SU===1====", nextStage);
 
           // No more stages - mark request as approved
           if (!nextStage) {
@@ -404,6 +405,7 @@ export class WorkflowExecutionService {
         }
       }
     } catch (error) {
+      console.error("-----------------------------D-RRRR--------", error);
       console.log("-----------------------------D-RRRR--------", error);
     }
   }

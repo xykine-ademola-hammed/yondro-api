@@ -1,1 +1,0 @@
-{"version":3,"file":"PositionSeeder.js","sourceRoot":"","sources":["../../src/seeders/PositionSeeder.ts"],"names":[],"mappings":";;;AACA,iDAA8C;AAG9C,MAAa,cAAc;IACzB,MAAM,CAAC,KAAK,CAAC,GAAG;QACd,MAAM,mBAAQ,CAAC,UAAU,CACvB;YACE;gBACE,cAAc,EAAE,CAAC;gBACjB,YAAY,EAAE,CAAC;gBACf,KAAK,EAAE,cAAc;aACtB;SACF,EACD,EAAE,gBAAgB,EAAE,IAAI,EAAE,CAC3B,CAAC;IACJ,CAAC;CACF;AAbD,wCAaC"}

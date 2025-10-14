@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vote Book Report - <%= organization.name %></title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            line-height: 1.4;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .report-info {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .info-value {
+            color: #1e293b;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .data-table th {
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+            padding: 12px 8px;
+            text-align: left;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .data-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 11px;
+        }
+        
+        .data-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        
+        .amount {
+            text-align: right;
+            font-weight: 600;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .positive { color: #16a34a; }
+        .negative { color: #dc2626; }
+        .zero { color: #6b7280; }
+        
+        .account-type {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .type-asset { background: #dbeafe; color: #1d4ed8; }
+        .type-liability { background: #fecaca; color: #dc2626; }
+        .type-equity { background: #e0e7ff; color: #6366f1; }
+        .type-revenue { background: #dcfce7; color: #16a34a; }
+        .type-expense { background: #fed7aa; color: #ea580c; }
+        
+        .summary {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .summary h3 {
+            margin: 0 0 15px 0;
+            color: #1e293b;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .summary-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        
+        .summary-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #059669;
+            margin-bottom: 5px;
+        }
+        
+        .summary-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><%= organization.name %></h1>
+        <p>Vote Book Accounts Report - Generated <%= formatDateTime(generatedAt) %></p>
+    </div>
+
+    <div class="report-info">
+        <div>
+            <div class="info-item">
+                <span class="info-label">Report Type:</span>
+                <span class="info-value">Vote Book Accounts</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Generated By:</span>
+                <span class="info-value"><%= generatedBy.name %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">User Role:</span>
+                <span class="info-value"><%= capitalize(generatedBy.role) %></span>
+            </div>
+        </div>
+        <div>
+            <div class="info-item">
+                <span class="info-label">Total Accounts:</span>
+                <span class="info-value"><%= totalRecords %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Organization:</span>
+                <span class="info-value"><%= organization.code %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Generated At:</span>
+                <span class="info-value"><%= formatDateTime(generatedAt) %></span>
+            </div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Account Code</th>
+                <th>Account Name</th>
+                <th>Type</th>
+                <th>Class</th>
+                <th>Allocation</th>
+                <th>Committed</th>
+                <th>Spent</th>
+                <th>Available</th>
+                <th>Department</th>
+                <th>Fiscal Year</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% data.forEach(account => { %>
+            <tr>
+                <td><strong><%= account.code %></strong></td>
+                <td><%= account.name %></td>
+                <td>
+                    <span class="account-type type-<%= account.account_type %>">
+                        <%= capitalize(account.account_type) %>
+                    </span>
+                </td>
+                <td><%= capitalize(account.account_class) %></td>
+                <td class="amount"><%= formatCurrency(account.allocation_base) %></td>
+                <td class="amount"><%= formatCurrency(account.committed) %></td>
+                <td class="amount"><%= formatCurrency(account.spent) %></td>
+                <td class="amount <%= account.calculatedAvailable >= 0 ? 'positive' : 'negative' %>">
+                    <%= formatCurrency(account.calculatedAvailable) %>
+                </td>
+                <td><%= account.Department ? account.Department.code : 'N/A' %></td>
+                <td>FY <%= account.FiscalYear.year %></td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+
+    <div class="summary">
+        <h3>Financial Summary</h3>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-value"><%= totalRecords %></div>
+                <div class="summary-label">Total Accounts</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= formatCurrency(data.reduce((sum, a) => sum + parseFloat(a.allocation_base), 0)) %>
+                </div>
+                <div class="summary-label">Total Allocation</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= formatCurrency(data.reduce((sum, a) => sum + parseFloat(a.committed), 0)) %>
+                </div>
+                <div class="summary-label">Total Committed</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= formatCurrency(data.reduce((sum, a) => sum + parseFloat(a.spent), 0)) %>
+                </div>
+                <div class="summary-label">Total Spent</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= formatCurrency(data.reduce((sum, a) => sum + a.calculatedAvailable, 0)) %>
+                </div>
+                <div class="summary-label">Total Available</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= Math.round((data.reduce((sum, a) => sum + parseFloat(a.committed) + parseFloat(a.spent), 0) / data.reduce((sum, a) => sum + parseFloat(a.allocation_base), 0)) * 100) %>%
+                </div>
+                <div class="summary-label">Utilization Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This report was generated by <%= organization.name %> Financial Management System</p>
+        <p>Generated on <%= formatDateTime(generatedAt) %> by <%= generatedBy.name %> (<%= generatedBy.email %>)</p>
+        <p>Report contains <%= totalRecords %> records | Confidential - For Internal Use Only</p>
+    </div>
+</body>
+</html>

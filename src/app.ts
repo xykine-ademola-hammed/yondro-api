@@ -1,4 +1,5 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -9,10 +10,25 @@ import sequelize from "./config/database";
 const app = express();
 
 // Security middleware
-app.use(helmet());
+// Security middleware
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:", "https:"],
+      },
+    },
+  })
+);
+
+app.use(cookieParser());
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: process.env.FRONTEND_URL || "*",
     credentials: true,
   })
 );
@@ -31,8 +47,16 @@ const limiter = rateLimit({
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// Trust proxy for accurate IP addresses
+app.set("trust proxy", true);
+
 // Routes
 app.use("/", routes);
+
+// Health check
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
 
 // Error handling middleware
 app.use(notFoundHandler);

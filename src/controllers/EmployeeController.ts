@@ -3,6 +3,7 @@ import { BaseService } from "../services/BaseService";
 import { Employee, Department, Position, Unit } from "../models";
 import { Op } from "sequelize";
 import { buildQueryWithIncludes, Filter } from "../utils/filterWhereBuilder";
+import { AuthController } from "./AuthController";
 
 export class EmployeeController {
   private static employeeService = new BaseService(Employee);
@@ -52,8 +53,11 @@ export class EmployeeController {
         email,
         phone,
         password,
-        role: role || "Employee",
+        role: role,
         isActive: true,
+        permission: new AuthController().getDefaultPermissionsForRole(
+          role.toLowerCase()
+        ),
       });
 
       res.status(201).json({
@@ -76,18 +80,29 @@ export class EmployeeController {
 
       const { where, include } = buildQueryWithIncludes(filters, Position);
 
-      const result =
-        await EmployeeController.employeeService.findWithPagination({
-          page: offset ? Number(offset) : 1,
-          limit: limit ? Number(limit) : 10,
-          search: search as string,
-          where,
-          include: [
-            { model: Department, as: "department", include: [Unit] },
-            Position,
-            ...include,
-          ],
-        });
+      const { count, rows } = await Employee.findAndCountAll({
+        where,
+        include: [
+          { model: Department, as: "department", include: [Unit] },
+          Position,
+          ...include,
+        ],
+        distinct: true, // <- ensures COUNT(DISTINCT Employee.id)
+        limit: 1000,
+        offset,
+        order: [["createdAt", "DESC"]], // <- correct order syntax
+        subQuery: false, // <- helps with DISTINCT + LIMIT in some dialects (esp. Postgres)
+      });
+
+      const result = {
+        rows,
+        pagination: {
+          page: offset,
+          limit,
+          total: count,
+          totalPages: Math.ceil(count / limit),
+        },
+      };
 
       res.json(result);
     } catch (error: any) {

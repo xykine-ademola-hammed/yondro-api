@@ -109,6 +109,18 @@ export class Stage extends Model {
   isRequireApproval!: boolean;
 
   @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  trigerVoucherCreation!: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  triggerVotebookEntry!: boolean;
+
+  @Column({
     type: DataType.JSON,
     defaultValue: {},
   })
@@ -119,6 +131,57 @@ export class Stage extends Model {
     defaultValue: {},
   })
   formSections!: Record<string, any>;
+
+  @Column({
+    type: DataType.JSON,
+    defaultValue: {},
+  })
+  splitPositions!: Record<string, any>;
+
+  @Column({
+    type: DataType.JSON,
+    defaultValue: {},
+  })
+  get responseTypes(): string[] {
+    const raw = this.getDataValue("responseTypes") as unknown;
+
+    // Already an array
+    if (Array.isArray(raw)) return raw;
+
+    // Cloud sometimes returns JSON as a string – parse it safely
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    // Anything else -> empty array
+    return [];
+  }
+
+  set responseTypes(val: unknown) {
+    // Accept string | string[] | unknown, normalize to string[]
+    if (Array.isArray(val)) {
+      this.setDataValue("responseTypes", val);
+      return;
+    }
+    if (typeof val === "string") {
+      try {
+        const parsed = JSON.parse(val);
+        this.setDataValue(
+          "responseTypes",
+          Array.isArray(parsed) ? parsed : [val]
+        );
+      } catch {
+        this.setDataValue("responseTypes", [val]); // treat plain string as single item
+      }
+      return;
+    }
+    this.setDataValue("responseTypes", []); // fallback
+  }
 
   @CreatedAt
   createdAt!: Date;
@@ -150,6 +213,8 @@ export interface StageAttributes {
   parentStep: number;
   isSubStage: boolean;
   isRequestor: boolean;
+  trigerVoucherCreation: boolean;
+  triggerVotebookEntry: boolean;
   isRequestorDepartment: boolean;
   assigneeDepartmentId?: number;
   assigneePositionId?: number;

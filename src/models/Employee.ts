@@ -21,6 +21,8 @@ import { WorkflowInstanceStage } from "./WorkflowInstanceStage";
 import { EmployeePosition } from "./EmployeePosition";
 import { SchoolOrOffice } from "./SchoolOrOffice";
 import { Unit } from "./Unit";
+import PasswordReset from "./PasswordReset";
+import AuditEvent from "./AuditEvent";
 
 type Role = "Admin" | "Manager" | "Employee";
 
@@ -63,6 +65,19 @@ export class Employee extends Model {
   })
   role!: Role;
 
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+    defaultValue: [],
+  })
+  get permissions(): string[] {
+    const rawValue = this.getDataValue("permissions");
+    return rawValue ? JSON.parse(rawValue) : [];
+  }
+  set permissions(value: string) {
+    this.setDataValue("permissions", JSON.stringify(value));
+  }
+
   @Column({ type: DataType.BOOLEAN, defaultValue: true, field: "is_active" })
   isActive!: boolean;
 
@@ -93,6 +108,22 @@ export class Employee extends Model {
   @ForeignKey(() => Unit)
   @Column({ type: DataType.INTEGER, allowNull: true, field: "unit_id" })
   unitId?: number | null;
+
+  // @Index
+  @Column({
+    type: DataType.DATE,
+    allowNull: true,
+  })
+  lastPasswordResetAt?: Date;
+
+  @HasMany(() => PasswordReset, "userId")
+  passwordResets!: PasswordReset[];
+
+  @HasMany(() => AuditEvent, "userId")
+  auditEvents!: AuditEvent[];
+
+  @HasMany(() => AuditEvent, "actorId")
+  actorEvents!: AuditEvent[];
 
   @CreatedAt
   @Column({ field: "created_at" })

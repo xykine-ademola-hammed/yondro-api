@@ -2,13 +2,17 @@ import { Router } from "express";
 import { WorkflowExecutionController } from "../controllers/WorkflowExecutionController";
 import { authenticate, authorize } from "../middleware/auth";
 import { UserRole } from "../types";
+import multer from "multer";
 
 const router = Router();
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Workflow execution endpoints
 router.post(
   "/workflow-request",
   authenticate,
+  upload.any(),
   WorkflowExecutionController.startWorkflowRequest
 );
 router.post(

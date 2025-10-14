@@ -1,6 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/AuthService';
-import { AuthUser, UserRole } from '../types';
+import { Request, Response, NextFunction } from "express";
+import { AuthService } from "../services/AuthService";
+import { AuthUser, UserRole } from "../types";
+import { Employee } from "../models";
 
 // Extend Express Request interface to include user
 declare global {
@@ -10,6 +11,23 @@ declare global {
     }
   }
 }
+
+export const requirePermission = (permission: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    if (
+      !req?.user?.permissions?.includes(permission) &&
+      req.user.role !== "Admin"
+    ) {
+      return res.status(403).json({ message: "Insufficient permissions" });
+    }
+
+    next();
+  };
+};
 
 /**
  * Authentication middleware - verifies JWT token
@@ -21,25 +39,25 @@ export const authenticate = async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       res.status(401).json({
         success: false,
-        error: 'Access token required'
+        error: "Access token required",
       });
       return;
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
+
     const user = await AuthService.verifyToken(token);
     req.user = user;
-    
+
     next();
   } catch (error: any) {
     res.status(401).json({
       success: false,
-      error: error.message || 'Invalid token'
+      error: error.message || "Invalid token",
     });
   }
 };
@@ -52,7 +70,7 @@ export const authorize = (...allowedRoles: UserRole[]) => {
     if (!req.user) {
       res.status(401).json({
         success: false,
-        error: 'Authentication required'
+        error: "Authentication required",
       });
       return;
     }
@@ -60,7 +78,7 @@ export const authorize = (...allowedRoles: UserRole[]) => {
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         success: false,
-        error: 'Insufficient permissions'
+        error: "Insufficient permissions",
       });
       return;
     }
@@ -79,13 +97,13 @@ export const optionalAuth = async (
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+
+    if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
       const user = await AuthService.verifyToken(token);
       req.user = user;
     }
-    
+
     next();
   } catch (error) {
     // Continue without authentication for optional auth
@@ -96,26 +114,29 @@ export const optionalAuth = async (
 /**
  * Check if user owns resource or is admin
  */
-export const ownerOrAdmin = (userIdField: string = 'userId') => {
+export const ownerOrAdmin = (userIdField: string = "userId") => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({
         success: false,
-        error: 'Authentication required'
+        error: "Authentication required",
       });
       return;
     }
 
     const resourceUserId = req.params[userIdField] || req.body[userIdField];
-    
-    if (req.user.role === UserRole.ADMIN || req.user.id === Number(resourceUserId)) {
+
+    if (
+      req.user.role === UserRole.ADMIN ||
+      req.user.id === Number(resourceUserId)
+    ) {
       next();
       return;
     }
 
     res.status(403).json({
       success: false,
-      error: 'Access denied'
+      error: "Access denied",
     });
   };
 };
@@ -123,11 +144,15 @@ export const ownerOrAdmin = (userIdField: string = 'userId') => {
 /**
  * Department-based authorization
  */
-export const departmentAccess = (req: Request, res: Response, next: NextFunction): void => {
+export const departmentAccess = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   if (!req.user) {
     res.status(401).json({
       success: false,
-      error: 'Authentication required'
+      error: "Authentication required",
     });
     return;
   }
@@ -139,7 +164,7 @@ export const departmentAccess = (req: Request, res: Response, next: NextFunction
   }
 
   const departmentId = req.params.departmentId || req.body.departmentId;
-  
+
   if (req.user.departmentId === Number(departmentId)) {
     next();
     return;
@@ -147,6 +172,6 @@ export const departmentAccess = (req: Request, res: Response, next: NextFunction
 
   res.status(403).json({
     success: false,
-    error: 'Department access denied'
+    error: "Department access denied",
   });
 };

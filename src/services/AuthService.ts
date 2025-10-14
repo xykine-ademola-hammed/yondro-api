@@ -1,4 +1,6 @@
 import bcrypt from "bcryptjs";
+import { Request } from "express";
+import { hash, verify } from "@node-rs/argon2";
 import jwt, { SignOptions } from "jsonwebtoken";
 import {
   Employee,
@@ -7,6 +9,7 @@ import {
   Organization,
   SchoolOrOffice,
   Unit,
+  PasswordReset,
 } from "../models";
 import {
   LoginRequest,
@@ -15,8 +18,27 @@ import {
   AuthUser,
   UserRole,
 } from "../types";
+import { Op } from "sequelize";
+import { SecurityService } from "./SecurityService";
+import { EmailService } from "./EmailService";
+import { AuditEventType, AuditService } from "./AuditService";
+
+export interface TokenPayload {
+  userId: number;
+  email: string;
+  exp: number;
+  iat: number;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  expiresAt: number;
+}
 
 export class AuthService {
+  private static emailService = new EmailService();
   private static readonly JWT_SECRET: jwt.Secret =
     process.env.JWT_SECRET || "your-super-secret-jwt-key";
   private static readonly JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
@@ -29,6 +51,42 @@ export class AuthService {
     const payload = { userId };
     const options: SignOptions = { expiresIn: Number(this.JWT_EXPIRES_IN) };
     return jwt.sign(payload, this.JWT_SECRET, options);
+  }
+
+  private static readonly ACCESS_TOKEN_EXPIRY = 30 * 60; // 15 minutes
+  private static readonly REFRESH_TOKEN_EXPIRY = 7 * 24 * 60 * 60; // 7 days
+
+  static generateTokens(user: Employee): AuthTokens {
+    const now = Math.floor(Date.now() / 1000);
+    const accessTokenExp = now + this.ACCESS_TOKEN_EXPIRY;
+    const refreshTokenExp = now + this.REFRESH_TOKEN_EXPIRY;
+
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        exp: accessTokenExp,
+        iat: now,
+      },
+      process.env.JWT_SECRET!
+    );
+
+    const refreshToken = jwt.sign(
+      {
+        userId: user.id,
+        type: "refresh",
+        exp: refreshTokenExp,
+        iat: now,
+      },
+      process.env.JWT_SECRET!
+    );
+
+    return {
+      accessToken,
+      refreshToken,
+      expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      expiresAt: accessTokenExp * 1000, // Convert to milliseconds
+    };
   }
 
   /**
@@ -45,6 +103,8 @@ export class AuthService {
       role: employee.role as UserRole,
       department: employee.department,
       position: employee.position,
+      organizationId: employee.organizationId,
+      permissions: employee.permissions,
     };
   }
 
@@ -53,7 +113,6 @@ export class AuthService {
    */
   static async login(loginData: LoginRequest): Promise<any> {
     const { email, password } = loginData;
-
     // Find user by email
     const employee = await Employee.findOne({
       where: {
@@ -73,13 +132,17 @@ export class AuthService {
       throw new Error("Invalid password");
     }
 
+    if (!employee.isActive) {
+      throw new Error("Account is deactivated. Please contact support.");
+    }
+
     // Convert to plain object to avoid circular references
     const employeeData = employee.get({ plain: true });
     // Generate token
-    const token = this.generateToken(employee.id);
+    const tokens = this.generateTokens(employee);
     return {
       user: { ...employeeData },
-      token,
+      tokens,
       expiresIn: this.JWT_EXPIRES_IN,
     };
   }
@@ -201,7 +264,6 @@ export class AuthService {
 
       return this.toAuthUser(employee);
     } catch (error) {
-      console.log("------------------------------");
       throw new Error("Invalid or expired token " + error);
     }
   }
@@ -210,9 +272,9 @@ export class AuthService {
    * Change user password
    */
   static async changePassword(
-    userId: number,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
+    userId?: number
   ): Promise<void> {
     const employee = await Employee.findByPk(userId);
 
@@ -236,7 +298,7 @@ export class AuthService {
   /**
    * Get user profile
    */
-  static async getProfile(userId: number): Promise<AuthUser> {
+  static async getProfile(userId?: number): Promise<AuthUser> {
     const employee = await Employee.findOne({
       where: { isActive: true, id: userId },
       include: [
@@ -258,5 +320,124 @@ export class AuthService {
     }
 
     return this.toAuthUser(employee);
+  }
+
+  static async verifyPassword(
+    user: Employee,
+    password: string
+  ): Promise<boolean> {
+    try {
+      return await verify(user.password, password);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  static async hashPassword(password: string): Promise<string> {
+    const params = {
+      memoryCost: 19456,
+      timeCost: 2,
+      parallelism: 1,
+      type: 2 as const,
+    }; // Argon2id
+    return hash(password, params);
+  }
+
+  static async refreshAccessToken(
+    refreshToken: string
+  ): Promise<AuthTokens | null> {
+    try {
+      const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET!) as {
+        userId: number;
+        type: string;
+        exp: number;
+      };
+
+      if (decoded.type !== "refresh") {
+        return null;
+      }
+
+      const employee = await Employee.findByPk(decoded.userId);
+      if (!employee) {
+        return null;
+      }
+
+      return this.generateTokens(employee);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  static getTokenExpiration(token: string): number | null {
+    try {
+      const decoded = jwt.decode(token) as TokenPayload;
+      return decoded.exp * 1000; // Convert to milliseconds
+    } catch (error) {
+      return null;
+    }
+  }
+
+  static async adminInitPassworReset(
+    employeeId: number,
+    req: Request,
+    ticketId: string
+  ) {
+    try {
+      const targetUser = await Employee.findByPk(employeeId);
+      if (!targetUser) {
+        throw new Error("User not found.");
+      }
+
+      // Mark any existing valid tokens as used
+      await PasswordReset.update(
+        { used_at: new Date() },
+        {
+          where: {
+            user_id: targetUser.id,
+            used_at: null,
+            expires_at: { [Op.gt]: new Date() },
+          },
+        }
+      );
+
+      // Generate new token
+      const token = this.generateToken(employeeId);
+      const tokenHash = SecurityService.hashToken(token);
+      const expiryMinutes = 20;
+      const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
+
+      await PasswordReset.create({
+        userId: targetUser.id,
+        tokenHash: tokenHash,
+        createdAt: new Date(),
+        expiresAt: expiresAt,
+        requestIp: SecurityService.ipToBuffer(req.ip || ""),
+      });
+
+      // Send email
+      const resetLink = `${
+        process.env.FRONTEND_URL
+      }/reset?token=${encodeURIComponent(token)}`;
+
+      await this.emailService.sendResetEmail({
+        user: targetUser,
+        resetLink,
+        expiryMinutes,
+        requestDetails: {
+          ip: req.ip || "unknown",
+          timestamp: new Date(),
+          browser: req.get("User-Agent"),
+        },
+      });
+
+      // Log admin-initiated reset
+      await AuditService.logFromRequest(
+        req,
+        AuditEventType.ADMIN_RESET_INITIATED,
+        targetUser.id,
+        req?.user?.id,
+        { ticketId, targetEmail: targetUser.email }
+      );
+    } catch (e) {}
   }
 }

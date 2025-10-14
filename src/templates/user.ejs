@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Users Report - <%= organization.name %></title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #333;
+            line-height: 1.4;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .report-info {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .info-value {
+            color: #1e293b;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .data-table th {
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+            padding: 12px 8px;
+            text-align: left;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .data-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 11px;
+        }
+        
+        .data-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        
+        .role-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .role-admin { background: #f3e8ff; color: #7c3aed; }
+        .role-requester { background: #dbeafe; color: #1d4ed8; }
+        .role-approver_l1 { background: #dcfce7; color: #16a34a; }
+        .role-approver_l2 { background: #dcfce7; color: #16a34a; }
+        .role-approver_l3 { background: #dcfce7; color: #16a34a; }
+        .role-finance_officer { background: #fed7aa; color: #ea580c; }
+        .role-expenditure_control { background: #fee2e2; color: #dc2626; }
+        .role-auditor { background: #f3f4f6; color: #374151; }
+        
+        .status-active { background: #dcfce7; color: #16a34a; }
+        .status-inactive { background: #fee2e2; color: #dc2626; }
+        
+        .summary {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .summary h3 {
+            margin: 0 0 15px 0;
+            color: #1e293b;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .summary-item {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        
+        .summary-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #7c3aed;
+            margin-bottom: 5px;
+        }
+        
+        .summary-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid #e2e8f0;
+            text-align: center;
+            color: #64748b;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><%= organization.name %></h1>
+        <p>Users Report - Generated <%= formatDateTime(generatedAt) %></p>
+    </div>
+
+    <div class="report-info">
+        <div>
+            <div class="info-item">
+                <span class="info-label">Report Type:</span>
+                <span class="info-value">Users</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Generated By:</span>
+                <span class="info-value"><%= generatedBy.name %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">User Role:</span>
+                <span class="info-value"><%= capitalize(generatedBy.role) %></span>
+            </div>
+        </div>
+        <div>
+            <div class="info-item">
+                <span class="info-label">Total Users:</span>
+                <span class="info-value"><%= totalRecords %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Organization:</span>
+                <span class="info-value"><%= organization.code %></span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Generated At:</span>
+                <span class="info-value"><%= formatDateTime(generatedAt) %></span>
+            </div>
+        </div>
+    </div>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Department</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Created</th>
+                <th>Permissions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <% data.forEach(user => { %>
+            <tr>
+                <td><%= user.first_name %> <%= user.last_name %></td>
+                <td><%= user.email %></td>
+                <td>
+                    <span class="role-badge role-<%= user.role %>">
+                        <%= capitalize(user.role) %>
+                    </span>
+                </td>
+                <td><%= user.Department ? `${user.Department.code} - ${user.Department.name}` : 'N/A' %></td>
+                <td>
+                    <span class="role-badge status-<%= user.is_active ? 'active' : 'inactive' %>">
+                        <%= user.is_active ? 'Active' : 'Inactive' %>
+                    </span>
+                </td>
+                <td><%= user.last_login ? formatDate(user.last_login) : 'Never' %></td>
+                <td><%= formatDate(user.created_at) %></td>
+                <td><%= user.permissions.length %> permissions</td>
+            </tr>
+            <% }); %>
+        </tbody>
+    </table>
+
+    <div class="summary">
+        <h3>User Statistics</h3>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-value"><%= totalRecords %></div>
+                <div class="summary-label">Total Users</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= data.filter(u => u.is_active).length %>
+                </div>
+                <div class="summary-label">Active Users</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= data.filter(u => u.role === 'admin').length %>
+                </div>
+                <div class="summary-label">Administrators</div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-value">
+                    <%= data.filter(u => u.role.includes('approver')).length %>
+                </div>
+                <div class="summary-label">Approvers</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This report was generated by <%= organization.name %> Financial Management System</p>
+        <p>Generated on <%= formatDateTime(generatedAt) %> by <%= generatedBy.name %> (<%= generatedBy.email %>)</p>
+        <p>Report contains <%= totalRecords %> records | Confidential - For Internal Use Only</p>
+    </div>
+</body>
+</html>

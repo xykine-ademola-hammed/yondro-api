@@ -26,7 +26,23 @@ export enum WorkflowInstanceStageStatus {
   REJECTED = "Rejected",
   CREATED = "Created",
   SUBMITTED = "Submitted",
+  ACKNOWLEDGEMENT = "Acknowledged",
+  PAYMENT = "Payment",
+  PROCREMENT = "Procurement",
+  RECOMMEND = "Recommend",
 }
+
+export const statusMapper = {
+  Approve: WorkflowInstanceStageStatus.APPROVED,
+  Reject: WorkflowInstanceStageStatus.REJECTED,
+  Created: WorkflowInstanceStageStatus.CREATED,
+  Submit: WorkflowInstanceStageStatus.SUBMITTED,
+  Acknowledgement: WorkflowInstanceStageStatus.ACKNOWLEDGEMENT,
+  Pending: WorkflowInstanceStageStatus.PENDING,
+  Procurement: WorkflowInstanceStageStatus.PROCREMENT,
+  Payment: WorkflowInstanceStageStatus.PAYMENT,
+  Recommend: WorkflowInstanceStageStatus.RECOMMEND,
+};
 
 export enum InternalStageRole {
   INITIATOR = "Initiator",
@@ -36,7 +52,13 @@ export enum InternalStageRole {
 
 export interface StageCompletionData {
   stageId: number;
-  action: "Approve" | "Reject";
+  action:
+    | "Approve"
+    | "Reject"
+    | "Payment"
+    | "Procurement"
+    | "Submit"
+    | "Acknowledgement";
   comment?: string;
   fieldResponses?: Record<string, any>;
   formResponses?: Record<string, any>;
@@ -63,9 +85,11 @@ export interface AuthUser {
   lastName: string;
   departmentId?: number | null;
   positionId?: number;
+  organizationId?: number;
   role: UserRole;
   department?: any;
   position?: any;
+  permissions?: string[];
 }
 
 export enum UserRole {

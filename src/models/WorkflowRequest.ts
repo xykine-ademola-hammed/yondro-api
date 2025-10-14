@@ -49,10 +49,34 @@ export class WorkflowRequest extends Model {
   formId!: number;
 
   @Column({
-    type: DataType.JSON,
+    type: DataType.JSON, // or DataType.JSONB on Postgres
+    allowNull: false,
     defaultValue: {},
+    get(this: WorkflowRequest) {
+      const raw = this.getDataValue("formResponses") as unknown;
+      if (raw == null) return {};
+      if (typeof raw === "string") {
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return {};
+        }
+      }
+      return raw as Record<string, any>;
+    },
+    set(this: WorkflowRequest, value: unknown) {
+      if (value == null) return this.setDataValue("formResponses", {});
+      if (typeof value === "string") {
+        try {
+          return this.setDataValue("formResponses", JSON.parse(value));
+        } catch {
+          /* if not valid JSON, store as-is */
+        }
+      }
+      this.setDataValue("formResponses", value as Record<string, any>);
+    },
   })
-  formResponses!: Record<string, any>;
+  declare formResponses: Record<string, any>;
 
   @Column({
     type: DataType.STRING,
@@ -66,6 +90,13 @@ export class WorkflowRequest extends Model {
     allowNull: false,
   })
   requestorId!: number;
+
+  @ForeignKey(() => WorkflowRequest)
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  parentRequestId!: number;
 
   @ForeignKey(() => Employee)
   @Column({

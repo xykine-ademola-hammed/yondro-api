@@ -58,6 +58,25 @@ export class Workflow extends Model {
   })
   isActive!: boolean;
 
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  isAutoTrigger!: boolean;
+
+  @Column({
+    type: DataType.TEXT,
+    allowNull: true,
+    defaultValue: [],
+  })
+  get childWorkflows(): string[] {
+    const rawValue = this.getDataValue("childWorkflows");
+    return rawValue ? JSON.parse(rawValue) : [];
+  }
+  set childWorkflows(value: string) {
+    this.setDataValue("childWorkflows", JSON.stringify(value));
+  }
+
   @CreatedAt
   createdAt!: Date;
 

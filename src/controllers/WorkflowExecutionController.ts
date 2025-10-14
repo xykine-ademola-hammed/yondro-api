@@ -4,19 +4,47 @@ import { StageCompletionData, InternalSendBackData } from "../types";
 import {
   buildQueryWithIncludes,
   buildWhere,
-  buildWhereClause,
   Filter,
 } from "../utils/filterWhereBuilder";
 import {
   Department,
+  Document,
   Employee,
   Position,
   Stage,
+  VoteBookAccount,
+  Voucher,
+  VoucherLine,
   Workflow,
   WorkflowInstanceStage,
   WorkflowRequest,
 } from "../models";
 import { BaseService } from "../services/BaseService";
+import { EmailService } from "../services/EmailService";
+import { ro } from "@faker-js/faker/.";
+import { StageUtils } from "../utils/stageUtils";
+import { uploadFileToS3 } from "../config/s3";
+import { Op } from "sequelize";
+import VoteBookService from "../services/voteBookService";
+
+/**
+ * Extracts the formKey from a file name of format `<timestamp>_<formKey>.<extension>`
+ * Example: '1688543549_purchaseOrder.pdf' => 'purchaseOrder'
+ * @param fileName - The file name (with or without path)
+ * @returns the extracted formKey, or undefined if format is incorrect
+ */
+export function extractFormKeyFromFileName(fileName: string): string {
+  if (!fileName) return "";
+  // Remove any directories (if mistakenly present)
+  const justFile = fileName.split("/").pop() || fileName;
+  // Remove extension
+  const base = justFile.replace(/\.[^/.]+$/, "");
+  // Split by '_'
+  const parts = base.split("_");
+  if (parts.length < 2) return ""; // doesn't match expected format
+  // formKey is everything after the first '_', in case formKey itself contains underscores
+  return parts.slice(1).join("_");
+}
 
 export class WorkflowExecutionController {
   private static workflowRequestService = new BaseService(WorkflowRequest);
@@ -29,7 +57,7 @@ export class WorkflowExecutionController {
     res: Response
   ): Promise<void> {
     try {
-      const { workflowId, requestorId, formResponses } = req.body;
+      const { workflowId, requestorId, ...formResponses } = req.body;
 
       const actedByUserId = req.user?.id;
 
@@ -40,8 +68,6 @@ export class WorkflowExecutionController {
         return;
       }
 
-      console.log("=================USER=====", req.user);
-
       const workflowRequest =
         await WorkflowExecutionService.startWorkflowRequest(
           workflowId,
@@ -50,6 +76,70 @@ export class WorkflowExecutionController {
           formResponses,
           req.user
         );
+
+      const files = req.files;
+
+      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+
+      // Ensure 'files' is an array of files
+      const filesArray: any[] = Array.isArray(files)
+        ? files
+        : files
+        ? [files]
+        : [];
+
+      let urls: Record<string, string> = {};
+
+      if (filesArray.length > 0) {
+        const optionPromises = filesArray.map(async (file, index) => {
+          if (!allowedTypes.includes(file.mimetype)) {
+            return res.status(400).json({
+              success: false,
+              error: "Invalid file type. Only JPEG, PNG, and PDF are allowed.",
+            });
+          }
+
+          if (file.size > maxSize) {
+            return res.status(400).json({
+              success: false,
+              error: "File size exceeds 5MB limit.",
+            });
+          }
+
+          const key = `files/${Date.now()}-${file.originalname}`.trim();
+
+          const fieldName: string = extractFormKeyFromFileName(
+            file.originalname
+          );
+
+          const url = await uploadFileToS3(file, key);
+
+          if (!url) {
+            return res.status(500).json({
+              success: false,
+              error: "Failed to upload image to S3.",
+            });
+          }
+
+          await Document.create({
+            entityId: Number(workflowRequest.id),
+            entityType: "WORKFLOW_REQUEST",
+            url,
+            createdBy: workflowRequest.createdBy,
+            fieldName,
+          });
+
+          urls[fieldName] = url;
+        });
+        await Promise.all(optionPromises);
+
+        await WorkflowRequest.update(
+          { formResponses: { ...formResponses, ...urls } },
+          { where: { id: workflowRequest.id } }
+        );
+      }
+      await new EmailService().sendTaskEmail(workflowRequest);
 
       res.status(201).json({
         success: true,
@@ -140,7 +230,7 @@ export class WorkflowExecutionController {
 
       const where = buildWhere(filters);
 
-      console.log("======where===222=====", where);
+      // console.log("======where===222=====", where);
 
       const result =
         await WorkflowExecutionController.workflowRequestService.findWithPagination(
@@ -183,7 +273,36 @@ export class WorkflowExecutionController {
           }
         );
 
-      res.json(result);
+      // Fix async filter usage: get results in parallel, then filter
+      const nextStageAssigneeChecks = await Promise.all(
+        result.rows.map(async (item) => {
+          // get the latest workflowInstanceStage
+          const nextStage = await StageUtils.getNextStage(item.id);
+
+          if (nextStage?.isSubStage) {
+            console.log(
+              "=====nextStage=111=====",
+              nextStage.assignedToUserId,
+              req.user?.id
+            );
+
+            console.log(
+              "====req.user?.id=======",
+              nextStage.assignedToUserId === req.user?.id
+            );
+
+            return nextStage.assignedToUserId === req.user?.id;
+          } else {
+            return true;
+          }
+        })
+      );
+
+      const cleanUpSubTaskNotNextStage = result.rows.filter(
+        (_item, idx) => nextStageAssigneeChecks[idx]
+      );
+
+      res.json({ ...result, rows: cleanUpSubTaskNotNextStage });
     } catch (error: any) {
       res.status(500).json({
         error: error.message || "Failed to create department",
@@ -350,9 +469,18 @@ export class WorkflowExecutionController {
         return;
       }
 
-      if (!["Approve", "Reject"].includes(data.action)) {
+      if (
+        ![
+          "Approve",
+          "Reject",
+          "Payment",
+          "Procurement",
+          "Acknowledgement",
+          "Recommend",
+        ].includes(data.action)
+      ) {
         res.status(400).json({
-          error: 'Action must be either "Approve" or "Reject"',
+          error: "Action must be either valid action types",
         });
         return;
       }
@@ -363,9 +491,71 @@ export class WorkflowExecutionController {
         user: req.user,
       });
 
+      const stage = await WorkflowInstanceStage.findByPk(data.stageId, {
+        include: [
+          { model: Stage, as: "stage" },
+          { model: WorkflowRequest, as: "request", include: [Workflow] },
+        ],
+      });
+
+      if (
+        stage?.stageName === "Payment Voucher Approval" &&
+        stage.stage.trigerVoucherCreation &&
+        stage.status === "Approved"
+      ) {
+        const voucher_number = await generateVoucherNumber(
+          req?.user?.organizationId
+        );
+        const voucher = await Voucher.create({
+          voucher_number,
+          organization_id: req?.user?.organizationId!,
+          requester_id: req.user!.id,
+          payee_name: stage.request.formResponses.applicantName,
+          payee_address: stage.request.formResponses.applicantAddress,
+          purpose: stage.request.formResponses.applicantDescription,
+          total_amount: stage.request.formResponses.debitAmount,
+          tax_amount: 0,
+          net_amount: stage.request.formResponses.debitAmount,
+          currency: "NGN",
+          priority: "high",
+          due_date: undefined,
+          invoice_number: stage.request.formResponses.voucherNo,
+          po_number: stage.request.formResponses.voucherNo,
+          notes: "",
+          status: "posted",
+          attachment_count: 0,
+        });
+
+        const line = await VoucherLine.create({
+          voucher_id: voucher.id,
+          account_id: stage.request.formResponses.selectedVoucherAccount?.id,
+          line_number: 1,
+          description: stage.request.formResponses.paymentParticles,
+          quantity: 1,
+          unit_cost: stage.request.formResponses.paymentDetailAmount,
+          total_amount: stage.request.formResponses.paymentDetailAmount,
+          tax_code: stage.request.formResponses.accountCodeNo,
+          tax_amount: 0,
+        });
+
+        // postToVoteBook
+        await VoteBookAccount.update(
+          {
+            spent: VoteBookAccount.sequelize!.literal(
+              `spent + ${line.total_amount}`
+            ),
+          },
+          {
+            where: { id: line.account_id },
+          }
+        );
+      }
+
+      if (stage) await new EmailService().sendTaskEmail(stage?.request);
+
       res.json({
         success: true,
-        message: `Stage ${data.action}d successfully`,
+        message: `Stage ${data.action} successfully`,
       });
     } catch (error: any) {
       res.status(500).json({
@@ -410,3 +600,27 @@ export class WorkflowExecutionController {
     }
   }
 }
+
+const generateVoucherNumber = async (organizationId?: number) => {
+  const year = new Date().getFullYear();
+  const lastVoucher = await Voucher.findOne({
+    where: {
+      organization_id: organizationId!,
+      voucher_number: {
+        [Op.like]: `${organizationId}-${year}-%`,
+      },
+    },
+    order: [["created_at", "DESC"]],
+  });
+
+  let sequence = 1;
+  if (lastVoucher) {
+    const lastSequence = parseInt(lastVoucher.voucher_number.split("-")[2]);
+    sequence = lastSequence + 1;
+  }
+
+  const voucher_number = `${organizationId}-${year}-${sequence
+    .toString()
+    .padStart(6, "0")}`;
+  return voucher_number;
+};
