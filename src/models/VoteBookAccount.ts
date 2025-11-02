@@ -31,12 +31,6 @@ export type AccountClass =
   tableName: "vote_book_accounts",
   timestamps: true,
   underscored: true,
-  indexes: [
-    {
-      unique: true,
-      fields: ["fiscal_year_id", "code"],
-    },
-  ],
 })
 export default class VoteBookAccount extends Model {
   @Column({

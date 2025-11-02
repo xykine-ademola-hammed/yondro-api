@@ -42,6 +42,16 @@ export class EmployeeController {
         return;
       }
 
+      const foundEmployee = await EmployeeController.employeeService.findAll({
+        where: { email: email },
+      });
+
+      if (foundEmployee.length > 0) {
+        res.status(500).json({
+          error: "Employee with similar emial already exist",
+        });
+        return;
+      }
       const employee = await EmployeeController.employeeService.createOnly({
         departmentId,
         organizationId,
@@ -55,16 +65,19 @@ export class EmployeeController {
         password,
         role: role,
         isActive: true,
-        permission: new AuthController().getDefaultPermissionsForRole(
-          role.toLowerCase()
+        permissions: new AuthController().getDefaultPermissionsForRole(
+          role?.toLowerCase()
         ),
       });
+
+      console.error("----------------EMPLOYEE-------------------", employee);
 
       res.status(201).json({
         success: true,
         data: employee,
       });
     } catch (error: any) {
+      console.error("================error.message===========", error.message);
       res.status(500).json({
         error: error.message || "Failed to create employee",
       });

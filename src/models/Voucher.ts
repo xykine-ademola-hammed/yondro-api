@@ -59,7 +59,6 @@ export default class Voucher extends Model {
   @Column({
     type: DataType.STRING(50),
     allowNull: false,
-    unique: true,
   })
   voucher_number!: string;
 
@@ -91,7 +90,7 @@ export default class Voucher extends Model {
 
   @Column({
     type: DataType.TEXT,
-    allowNull: false,
+    allowNull: true,
   })
   purpose!: string;
 

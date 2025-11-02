@@ -31,7 +31,6 @@ export default class NcoaCode extends Model {
   @Column({
     type: DataType.STRING(20),
     allowNull: false,
-    unique: true,
   })
   code!: string;
 

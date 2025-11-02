@@ -231,22 +231,10 @@ export class StageUtils {
       });
     }
 
-    console.error("=========NEXT==SAGE==1======", nextStage);
-
-    console.error("=======WHERE=======", {
-      workflowId: stage.request ? stage.request.workflowId : undefined,
-      step: { [Op.gt]: stage.step },
-      isSubStage: false,
-    });
-
-    console.error("=========NEXT==SAGE==2======", nextStage);
-
     if (!nextStage || nextStage === null) {
       // No more stages, workflow complete
       return null;
     }
-
-    console.error("=========NEXT==SAGE==3======", nextStage);
 
     let assignedToUserId: number | undefined;
 
@@ -281,41 +269,28 @@ export class StageUtils {
       data?.formResponses &&
       data.formResponses[nextStage.assigineeLookupField]
     ) {
-      console.error("=========NEXT==SAGE==4======");
       assignedToUserId = data.formResponses[nextStage.assigineeLookupField];
     } else if (nextStage.assigneePositionId) {
-      console.error(
-        "=========NEXT==SAGE==5======",
-        nextStage.assigneePositionId
-      );
       // Option 2: Find an employee by assignee position
       const employee = await Employee.findOne({
         where: { positionId: nextStage.assigneePositionId },
       });
       if (employee) assignedToUserId = employee.id;
     } else if (stage.actedByUserId) {
-      console.error("=========NEXT==SAGE==6======", stage.actedByUserId);
       // Option 3: Use supervisor of actor
       const requestor = await Employee.findByPk(stage.actedByUserId, {
         include: [Position],
       });
       const parentPositionId = requestor?.position?.parentPositionId;
-      console.error("---------ParentPositionId-----", parentPositionId);
       if (parentPositionId) {
         const parentPosition = await Position.findByPk(parentPositionId, {
           include: [Employee],
         });
 
-        console.error("---------Parent-----Position-----", parentPosition);
-
         const requestorParent = parentPosition?.employees?.[0];
-
-        console.error("------Requestor---Parent-----", requestorParent);
 
         if (requestorParent) {
           assignedToUserId = requestorParent.id;
-
-          console.error("------assignedToUserId-----", assignedToUserId);
         }
       }
     }

@@ -13,15 +13,6 @@ import VoteBookAccount from "./VoteBookAccount";
   tableName: "voucher_lines",
   timestamps: true,
   underscored: true,
-  indexes: [
-    {
-      unique: true,
-      fields: ["voucher_id", "line_number"],
-    },
-    {
-      fields: ["account_id"],
-    },
-  ],
 })
 export default class VoucherLine extends Model {
   @Column({

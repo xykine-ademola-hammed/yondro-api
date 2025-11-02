@@ -29,11 +29,9 @@ export default class PasswordReset extends Model {
   })
   declare userId: number;
 
-  @Index({ unique: true })
   @Column({
     type: DataType.CHAR(64),
     allowNull: false,
-    unique: true,
   })
   declare tokenHash: string;
 

@@ -49,7 +49,7 @@ export class WorkflowRequest extends Model {
   formId!: number;
 
   @Column({
-    type: DataType.JSON, // or DataType.JSONB on Postgres
+    type: DataType.JSON,
     allowNull: false,
     defaultValue: {},
     get(this: WorkflowRequest) {

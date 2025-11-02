@@ -42,11 +42,9 @@ export class Employee extends Model {
   @Column({ type: DataType.STRING(100), allowNull: false, field: "last_name" })
   lastName!: string;
 
-  @Index({ name: "uq_employees_email", unique: true })
   @Column({
     type: DataType.STRING(255),
     allowNull: false,
-    unique: true,
     validate: { isEmail: true },
     field: "email",
   })
@@ -66,16 +64,40 @@ export class Employee extends Model {
   role!: Role;
 
   @Column({
-    type: DataType.TEXT,
+    type: DataType.JSON,
     allowNull: true,
-    defaultValue: [],
   })
   get permissions(): string[] {
-    const rawValue = this.getDataValue("permissions");
-    return rawValue ? JSON.parse(rawValue) : [];
+    const raw = this.getDataValue("permissions") as unknown;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
-  set permissions(value: string) {
-    this.setDataValue("permissions", JSON.stringify(value));
+  set permissions(val: unknown) {
+    if (Array.isArray(val)) {
+      this.setDataValue("permissions", val);
+      return;
+    }
+    if (typeof val === "string") {
+      try {
+        const parsed = JSON.parse(val);
+        this.setDataValue(
+          "permissions",
+          Array.isArray(parsed) ? parsed : [val]
+        );
+      } catch {
+        this.setDataValue("permissions", [val]);
+      }
+      return;
+    }
+    this.setDataValue("permissions", []);
   }
 
   @Column({ type: DataType.BOOLEAN, defaultValue: true, field: "is_active" })

@@ -14,12 +14,6 @@ import VoteBookAccount from "./VoteBookAccount";
   tableName: "fiscal_years",
   timestamps: true,
   underscored: true,
-  indexes: [
-    {
-      unique: true,
-      fields: ["organization_id", "year"],
-    },
-  ],
 })
 export default class FiscalYear extends Model {
   @Column({

@@ -34,7 +34,6 @@ export class SchoolOrOffice extends Model<
   })
   organizationId!: number;
 
-  @Index({ name: "uq_soo_org_name", unique: true })
   @Column({ type: DataType.STRING(255), allowNull: false, field: "name" })
   name!: string;
 

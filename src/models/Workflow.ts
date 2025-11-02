@@ -42,7 +42,6 @@ export class Workflow extends Model {
   @Column({
     type: DataType.STRING(255),
     allowNull: false,
-    unique: true,
   })
   name!: string;
 

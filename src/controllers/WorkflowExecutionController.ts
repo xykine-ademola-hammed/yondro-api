@@ -77,68 +77,8 @@ export class WorkflowExecutionController {
           req.user
         );
 
-      const files = req.files;
+      await this.uploadFileToRequest(req, res, workflowRequest);
 
-      const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-
-      // Ensure 'files' is an array of files
-      const filesArray: any[] = Array.isArray(files)
-        ? files
-        : files
-        ? [files]
-        : [];
-
-      let urls: Record<string, string> = {};
-
-      if (filesArray.length > 0) {
-        const optionPromises = filesArray.map(async (file, index) => {
-          if (!allowedTypes.includes(file.mimetype)) {
-            return res.status(400).json({
-              success: false,
-              error: "Invalid file type. Only JPEG, PNG, and PDF are allowed.",
-            });
-          }
-
-          if (file.size > maxSize) {
-            return res.status(400).json({
-              success: false,
-              error: "File size exceeds 5MB limit.",
-            });
-          }
-
-          const key = `files/${Date.now()}-${file.originalname}`.trim();
-
-          const fieldName: string = extractFormKeyFromFileName(
-            file.originalname
-          );
-
-          const url = await uploadFileToS3(file, key);
-
-          if (!url) {
-            return res.status(500).json({
-              success: false,
-              error: "Failed to upload image to S3.",
-            });
-          }
-
-          await Document.create({
-            entityId: Number(workflowRequest.id),
-            entityType: "WORKFLOW_REQUEST",
-            url,
-            createdBy: workflowRequest.createdBy,
-            fieldName,
-          });
-
-          urls[fieldName] = url;
-        });
-        await Promise.all(optionPromises);
-
-        await WorkflowRequest.update(
-          { formResponses: { ...formResponses, ...urls } },
-          { where: { id: workflowRequest.id } }
-        );
-      }
       await new EmailService().sendTaskEmail(workflowRequest);
 
       res.status(201).json({
@@ -498,6 +438,9 @@ export class WorkflowExecutionController {
         ],
       });
 
+      if (stage?.request)
+        await this.uploadFileToRequest(req, res, stage?.request);
+
       if (
         stage?.stageName === "Payment Voucher Approval" &&
         stage.stage.trigerVoucherCreation &&
@@ -597,6 +540,73 @@ export class WorkflowExecutionController {
       res.status(500).json({
         error: error.message || "Failed to send back stage",
       });
+    }
+  }
+
+  static async uploadFileToRequest(
+    req: Request,
+    res: Response,
+    workflowRequest: WorkflowRequest
+  ): Promise<void> {
+    const files = req.files;
+
+    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+
+    // Ensure 'files' is an array of files
+    const filesArray: any[] = Array.isArray(files)
+      ? files
+      : files
+      ? [files]
+      : [];
+
+    let urls: Record<string, string> = {};
+
+    if (filesArray.length > 0) {
+      const optionPromises = filesArray.map(async (file, index) => {
+        if (!allowedTypes.includes(file.mimetype)) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid file type. Only JPEG, PNG, and PDF are allowed.",
+          });
+        }
+
+        if (file.size > maxSize) {
+          return res.status(400).json({
+            success: false,
+            error: "File size exceeds 5MB limit.",
+          });
+        }
+
+        const key = `files/${Date.now()}-${file.originalname}`.trim();
+
+        const fieldName: string = extractFormKeyFromFileName(file.originalname);
+
+        const url = await uploadFileToS3(file, key);
+
+        if (!url) {
+          return res.status(500).json({
+            success: false,
+            error: "Failed to upload image to S3.",
+          });
+        }
+
+        await Document.create({
+          entityId: Number(workflowRequest.id),
+          entityType: "WORKFLOW_REQUEST",
+          url,
+          createdBy: workflowRequest.createdBy,
+          fieldName,
+        });
+
+        urls[fieldName] = url;
+      });
+      await Promise.all(optionPromises);
+
+      await WorkflowRequest.update(
+        { formResponses: { ...req.body.formResponses, ...urls } },
+        { where: { id: workflowRequest.id } }
+      );
     }
   }
 }

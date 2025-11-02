@@ -31,7 +31,6 @@ export class Organization extends Model {
   @Column({
     type: DataType.STRING(255),
     allowNull: false,
-    unique: true,
   })
   name!: string;
 
