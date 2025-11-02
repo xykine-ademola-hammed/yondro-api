@@ -46,6 +46,7 @@ router.get(
 router.post(
   "/workflowrequest/stage/complete",
   authenticate,
+  upload.any(),
   WorkflowExecutionController.completeStage
 );
 router.post(
