@@ -172,6 +172,12 @@ export default class Voucher extends Model {
   attachment_count!: number;
 
   @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  entityId!: number;
+
+  @Column({
     type: DataType.TEXT,
     allowNull: true,
   })

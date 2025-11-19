@@ -119,7 +119,7 @@ export class AuthService {
         email: email.toLowerCase(),
         isActive: true,
       },
-      include: [Organization, Department, Position, Unit],
+      include: [Organization, Department, Position, Unit, SchoolOrOffice],
     });
 
     if (!employee) {
@@ -298,28 +298,19 @@ export class AuthService {
   /**
    * Get user profile
    */
-  static async getProfile(userId?: number): Promise<AuthUser> {
+  static async getProfile(userId?: number): Promise<any> {
     const employee = await Employee.findOne({
       where: { isActive: true, id: userId },
-      include: [
-        {
-          model: Department,
-          as: "department",
-          attributes: ["id", "name"],
-        },
-        {
-          model: Position,
-          as: "position",
-          attributes: ["id", "title"],
-        },
-      ],
+      include: [Organization, Department, Position, Unit, SchoolOrOffice],
     });
 
     if (!employee) {
       throw new Error("User not found");
     }
 
-    return this.toAuthUser(employee);
+    const employeeData = employee.get({ plain: true });
+
+    return employeeData;
   }
 
   static async verifyPassword(

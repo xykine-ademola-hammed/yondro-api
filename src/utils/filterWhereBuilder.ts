@@ -186,6 +186,8 @@ export function buildWhere(filter: any) {
 
 // ... other utility imports remain unchanged
 
+// Assuming modelMap, buildSimpleWhere, Filter, ClauseResult are defined elsewhere
+
 export const buildQueryWithIncludes = (
   filters: Filter[],
   baseModel?: ModelStatic<any>
@@ -205,6 +207,7 @@ export const buildQueryWithIncludes = (
     } else {
       // Nested: e.g., department.organization.type
       const topModelKey = parts[0];
+      console.log("==========1=====");
       const initialModel = modelMap[topModelKey];
       if (!initialModel) {
         throw new Error(
@@ -256,6 +259,29 @@ export const buildQueryWithIncludes = (
     }
   }
 
+  // Propagate required: true for includes with filters to ensure main query filtering
+  const setRequiredForFilters = (inc: IncludeOptions): boolean => {
+    let needsRequired = !!(
+      inc.where && Object.keys(inc.where || {}).length > 0
+    );
+
+    if (inc.include) {
+      (inc.include as IncludeOptions[]).forEach((child: IncludeOptions) => {
+        if (setRequiredForFilters(child)) {
+          needsRequired = true;
+        }
+      });
+    }
+
+    if (needsRequired) {
+      inc.required = true;
+    }
+
+    return needsRequired;
+  };
+
+  Object.values(includeMap).forEach(setRequiredForFilters);
+
   return {
     where,
     include: Object.values(includeMap),
@@ -290,32 +316,6 @@ function buildSimpleWhere(
     default:
       return {};
   }
-}
-
-function deepMergeIncludes(
-  a?: IncludeOptions,
-  b?: IncludeOptions
-): IncludeOptions {
-  if (!a) return b!;
-  if (!b) return a;
-
-  const merged: IncludeOptions = { ...a };
-
-  if (a.include && b.include) {
-    const map: Record<string, IncludeOptions> = {};
-
-    [...a.include, ...b.include].forEach((inc) => {
-      const key = (inc as any).model.name;
-      map[key] = deepMergeIncludes(map[key], inc as IncludeOptions);
-    });
-
-    merged.include = Object.values(map);
-  } else if (b.include) {
-    merged.include = b.include;
-  }
-
-  merged.where = { ...(a.where || {}), ...(b.where || {}) };
-  return merged;
 }
 
 // (Examples and comments remain unchanged)

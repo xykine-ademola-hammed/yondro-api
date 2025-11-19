@@ -12,8 +12,6 @@ import {
 import { Organization } from "./Organization";
 import { Position } from "./Position";
 import { Employee } from "./Employee";
-import { Stage } from "./Stage";
-import { EmployeePosition } from "./EmployeePosition";
 import { SchoolOrOffice } from "./SchoolOrOffice";
 import { Unit } from "./Unit";
 
@@ -90,9 +88,6 @@ export class Department extends Model {
 
   @HasMany(() => Employee)
   employees!: Employee[];
-
-  @HasMany(() => Stage)
-  stages!: Stage[];
 }
 
 export interface DepartmentAttributes {

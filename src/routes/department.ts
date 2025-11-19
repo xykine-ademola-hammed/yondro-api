@@ -17,6 +17,13 @@ router.post(
   authenticate,
   DepartmentController.getDepartments
 );
+
+router.post(
+  "/departments/lookup",
+  authenticate,
+  DepartmentController.lookupDepartments
+);
+
 router.get("/departments", authenticate, DepartmentController.getAll);
 router.get("/departments/:id", authenticate, DepartmentController.getById);
 router.put(

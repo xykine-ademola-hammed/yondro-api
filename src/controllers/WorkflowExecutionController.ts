@@ -12,20 +12,16 @@ import {
   Employee,
   Position,
   Stage,
-  VoteBookAccount,
-  Voucher,
-  VoucherLine,
   Workflow,
   WorkflowInstanceStage,
   WorkflowRequest,
 } from "../models";
 import { BaseService } from "../services/BaseService";
 import { EmailService } from "../services/EmailService";
-import { ro } from "@faker-js/faker/.";
 import { StageUtils } from "../utils/stageUtils";
 import { uploadFileToS3 } from "../config/s3";
-import { Op } from "sequelize";
-import VoteBookService from "../services/voteBookService";
+import sequelize from "../config/database";
+import { WorkflowInboxRow } from "../utils/requestQuery-helper";
 
 /**
  * Extracts the formKey from a file name of format `<timestamp>_<formKey>.<extension>`
@@ -77,7 +73,7 @@ export class WorkflowExecutionController {
           req.user
         );
 
-      await this.uploadFileToRequest(req, res, workflowRequest);
+      await uploadFileToRequest(req, res, workflowRequest);
 
       await new EmailService().sendTaskEmail(workflowRequest);
 
@@ -169,9 +165,6 @@ export class WorkflowExecutionController {
       const { limit, offset, search } = req.body;
 
       const where = buildWhere(filters);
-
-      // console.log("======where===222=====", where);
-
       const result =
         await WorkflowExecutionController.workflowRequestService.findWithPagination(
           {
@@ -212,25 +205,12 @@ export class WorkflowExecutionController {
             ],
           }
         );
-
       // Fix async filter usage: get results in parallel, then filter
       const nextStageAssigneeChecks = await Promise.all(
         result.rows.map(async (item) => {
           // get the latest workflowInstanceStage
           const nextStage = await StageUtils.getNextStage(item.id);
-
           if (nextStage?.isSubStage) {
-            console.log(
-              "=====nextStage=111=====",
-              nextStage.assignedToUserId,
-              req.user?.id
-            );
-
-            console.log(
-              "====req.user?.id=======",
-              nextStage.assignedToUserId === req.user?.id
-            );
-
             return nextStage.assignedToUserId === req.user?.id;
           } else {
             return true;
@@ -259,9 +239,6 @@ export class WorkflowExecutionController {
         filters,
         WorkflowInstanceStage
       );
-
-      // console.log("======where========", where);
-      // console.log("======include========", include);
 
       const result =
         await WorkflowExecutionController.workflowRequestService.findWithPagination(
@@ -314,51 +291,24 @@ export class WorkflowExecutionController {
 
   static async getRequestHistory(req: Request, res: Response): Promise<void> {
     try {
-      const filters: Filter[] = req.body.filters || [];
-      const { limit, offset, search } = req.body;
+      const { departmentId, employeeId, limit, offset, formId, status } =
+        req.body;
 
-      const { where } = buildQueryWithIncludes(filters);
+      const result = await WorkflowExecutionService.fetchWorkflowInboxPage(
+        sequelize,
+        {
+          organizationId: req.user?.organizationId,
+          assignedToUserId: req.user?.id,
+          departmentId, // optional
+          employeeId, // ignore
+          status, // optional
+          formId, // optional
+          limit: limit ?? 10,
+          offset: offset ?? 0,
+        }
+      );
 
-      const result =
-        await WorkflowExecutionController.workflowRequestService.findWithPagination(
-          {
-            page: offset ? Number(offset) : 1,
-            limit: limit ? Number(limit) : 10,
-            search: search as string,
-            where,
-            include: [
-              {
-                model: Workflow,
-                as: "workflow",
-                include: [
-                  {
-                    model: Stage,
-                    as: "stages", // Ensure this alias matches the orderby clause
-                  },
-                ],
-              },
-              {
-                model: WorkflowInstanceStage,
-                as: "stages",
-                where: { assignedToUserId: req.user?.id },
-              },
-              {
-                model: Employee,
-                as: "requestor",
-                include: [Department, Position],
-              },
-            ],
-            orderby: [
-              ["createdAt", "DESC"],
-              [
-                { model: Workflow, as: "workflow" },
-                { model: Stage, as: "stages" },
-                "step",
-                "ASC",
-              ],
-            ],
-          }
-        );
+      console.log("=============111================>>>>>>>>", result);
 
       res.json(result);
     } catch (error: any) {
@@ -366,6 +316,29 @@ export class WorkflowExecutionController {
         error: error.message || "Failed to create department",
       });
     }
+  }
+
+  static async getUserRequests(
+    req: Request,
+    res: Response
+  ): Promise<WorkflowInboxRow[]> {
+    const { departmentId, status, formId, limit, offset } = req.body;
+
+    const result = await WorkflowExecutionService.fetchWorkflowInbox(
+      sequelize,
+      {
+        organizationId: req.user?.organizationId,
+        assignedToUserId: req.user?.id,
+        departmentId: departmentId, // optional
+        employeeId: undefined, // ignore
+        status: status ?? "PENDING", // optional
+        formId, // optional
+        limit: limit ?? 10,
+        offset: offset ?? 0,
+      }
+    );
+
+    return result;
   }
 
   /**
@@ -431,6 +404,12 @@ export class WorkflowExecutionController {
         user: req.user,
       });
 
+      await WorkflowExecutionService.processStageVoucher({
+        ...data,
+        actedByUserId,
+        user: req.user,
+      });
+
       const stage = await WorkflowInstanceStage.findByPk(data.stageId, {
         include: [
           { model: Stage, as: "stage" },
@@ -438,61 +417,7 @@ export class WorkflowExecutionController {
         ],
       });
 
-      if (stage?.request)
-        await this.uploadFileToRequest(req, res, stage?.request);
-
-      if (
-        stage?.stageName === "Payment Voucher Approval" &&
-        stage.stage.trigerVoucherCreation &&
-        stage.status === "Approved"
-      ) {
-        const voucher_number = await generateVoucherNumber(
-          req?.user?.organizationId
-        );
-        const voucher = await Voucher.create({
-          voucher_number,
-          organization_id: req?.user?.organizationId!,
-          requester_id: req.user!.id,
-          payee_name: stage.request.formResponses.applicantName,
-          payee_address: stage.request.formResponses.applicantAddress,
-          purpose: stage.request.formResponses.applicantDescription,
-          total_amount: stage.request.formResponses.debitAmount,
-          tax_amount: 0,
-          net_amount: stage.request.formResponses.debitAmount,
-          currency: "NGN",
-          priority: "high",
-          due_date: undefined,
-          invoice_number: stage.request.formResponses.voucherNo,
-          po_number: stage.request.formResponses.voucherNo,
-          notes: "",
-          status: "posted",
-          attachment_count: 0,
-        });
-
-        const line = await VoucherLine.create({
-          voucher_id: voucher.id,
-          account_id: stage.request.formResponses.selectedVoucherAccount?.id,
-          line_number: 1,
-          description: stage.request.formResponses.paymentParticles,
-          quantity: 1,
-          unit_cost: stage.request.formResponses.paymentDetailAmount,
-          total_amount: stage.request.formResponses.paymentDetailAmount,
-          tax_code: stage.request.formResponses.accountCodeNo,
-          tax_amount: 0,
-        });
-
-        // postToVoteBook
-        await VoteBookAccount.update(
-          {
-            spent: VoteBookAccount.sequelize!.literal(
-              `spent + ${line.total_amount}`
-            ),
-          },
-          {
-            where: { id: line.account_id },
-          }
-        );
-      }
+      if (stage?.request) await uploadFileToRequest(req, res, stage?.request);
 
       if (stage) await new EmailService().sendTaskEmail(stage?.request);
 
@@ -542,95 +467,67 @@ export class WorkflowExecutionController {
       });
     }
   }
-
-  static async uploadFileToRequest(
-    req: Request,
-    res: Response,
-    workflowRequest: WorkflowRequest
-  ): Promise<void> {
-    const files = req.files;
-
-    const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
-    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
-
-    // Ensure 'files' is an array of files
-    const filesArray: any[] = Array.isArray(files)
-      ? files
-      : files
-      ? [files]
-      : [];
-
-    let urls: Record<string, string> = {};
-
-    if (filesArray.length > 0) {
-      const optionPromises = filesArray.map(async (file, index) => {
-        if (!allowedTypes.includes(file.mimetype)) {
-          return res.status(400).json({
-            success: false,
-            error: "Invalid file type. Only JPEG, PNG, and PDF are allowed.",
-          });
-        }
-
-        if (file.size > maxSize) {
-          return res.status(400).json({
-            success: false,
-            error: "File size exceeds 5MB limit.",
-          });
-        }
-
-        const key = `files/${Date.now()}-${file.originalname}`.trim();
-
-        const fieldName: string = extractFormKeyFromFileName(file.originalname);
-
-        const url = await uploadFileToS3(file, key);
-
-        if (!url) {
-          return res.status(500).json({
-            success: false,
-            error: "Failed to upload image to S3.",
-          });
-        }
-
-        await Document.create({
-          entityId: Number(workflowRequest.id),
-          entityType: "WORKFLOW_REQUEST",
-          url,
-          createdBy: workflowRequest.createdBy,
-          fieldName,
-        });
-
-        urls[fieldName] = url;
-      });
-      await Promise.all(optionPromises);
-
-      await WorkflowRequest.update(
-        { formResponses: { ...req.body.formResponses, ...urls } },
-        { where: { id: workflowRequest.id } }
-      );
-    }
-  }
 }
 
-const generateVoucherNumber = async (organizationId?: number) => {
-  const year = new Date().getFullYear();
-  const lastVoucher = await Voucher.findOne({
-    where: {
-      organization_id: organizationId!,
-      voucher_number: {
-        [Op.like]: `${organizationId}-${year}-%`,
-      },
-    },
-    order: [["created_at", "DESC"]],
-  });
+const uploadFileToRequest = async (
+  req: Request,
+  res: Response,
+  workflowRequest: WorkflowRequest
+): Promise<void> => {
+  const files = req.files;
 
-  let sequence = 1;
-  if (lastVoucher) {
-    const lastSequence = parseInt(lastVoucher.voucher_number.split("-")[2]);
-    sequence = lastSequence + 1;
+  const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+  const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+
+  // Ensure 'files' is an array of files
+  const filesArray: any[] = Array.isArray(files) ? files : files ? [files] : [];
+
+  let urls: Record<string, string> = {};
+
+  if (filesArray.length > 0) {
+    const optionPromises = filesArray.map(async (file, index) => {
+      if (!allowedTypes.includes(file.mimetype)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid file type. Only JPEG, PNG, and PDF are allowed.",
+        });
+      }
+
+      if (file.size > maxSize) {
+        return res.status(400).json({
+          success: false,
+          error: "File size exceeds 5MB limit.",
+        });
+      }
+
+      const key = `files/${Date.now()}-${file.originalname}`.trim();
+
+      const fieldName: string = extractFormKeyFromFileName(file.originalname);
+
+      const url = await uploadFileToS3(file, key);
+
+      if (!url) {
+        return res.status(500).json({
+          success: false,
+          error: "Failed to upload image to S3.",
+        });
+      }
+
+      await Document.create({
+        entityId: Number(workflowRequest.id),
+        entityType: "WORKFLOW_REQUEST",
+        url,
+        createdBy: req?.user?.id,
+        fieldName,
+      });
+
+      urls[fieldName] = url;
+    });
+    await Promise.all(optionPromises);
+
+    await WorkflowRequest.update(
+      { formResponses: { ...req.body.formResponses, ...urls } },
+      { where: { id: workflowRequest.id } }
+    );
   }
-
-  const voucher_number = `${organizationId}-${year}-${sequence
-    .toString()
-    .padStart(6, "0")}`;
-  return voucher_number;
 };

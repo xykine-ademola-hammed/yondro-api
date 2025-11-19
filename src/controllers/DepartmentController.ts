@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
 import { Department, Organization, Employee, Position, Unit } from "../models";
 import { buildWhereClause, Filter } from "../utils/filterWhereBuilder";
+import { Op } from "sequelize";
 
 export class DepartmentController {
   private static departmentService = new BaseService(Department);
@@ -11,8 +12,14 @@ export class DepartmentController {
    */
   static async create(req: Request, res: Response): Promise<void> {
     try {
-      const { organizationId, name, description, units, financeCode } =
-        req.body;
+      const {
+        organizationId,
+        name,
+        description,
+        units,
+        financeCode,
+        schoolOrOfficeId,
+      } = req.body;
 
       if (!organizationId || !name) {
         res.status(400).json({
@@ -24,18 +31,30 @@ export class DepartmentController {
       const department =
         await DepartmentController.departmentService.createOnly({
           organizationId: Number(organizationId),
+          schoolOrOfficeId: Number(schoolOrOfficeId),
           name,
           description,
           isActive: true,
-          hasUnits: !!units.length,
           financeCode: financeCode,
         });
 
       for (let unit of units) {
-        // const createdUnit = await create Unit passing the departmentId and financeCode (department.id, unit.name, unit.financeCode)
-        for (let subUnit of unit.subUnits) {
-          // const createdSubUnit = await createSubUnit (createdUnitId, subUnit.financeCode, subUnit.name )
+        if (unit.id) {
+          await Unit.update(
+            { id: unit.id },
+            {
+              ...unit,
+              departmentId: department?.id,
+              organizationId: organizationId,
+            }
+          );
+          continue;
         }
+        await Unit.create({
+          ...unit,
+          departmentId: department?.id,
+          organizationId: organizationId,
+        });
       }
 
       res.status(201).json({
@@ -93,20 +112,67 @@ export class DepartmentController {
   /**
    * GET /department - Get all departments with pagination
    */
+
   static async getAll(req: Request, res: Response): Promise<void> {
     try {
       const { page, limit, search, organizationId } = req.query;
 
-      let where = {};
+      const where: any = {};
+
       if (organizationId) {
-        where = { organizationId: Number(organizationId) };
+        where.organizationId = Number(organizationId);
+      }
+
+      if (search) {
+        where.name = { [Op.like]: `%${search}%` };
       }
 
       const result =
         await DepartmentController.departmentService.findWithPagination({
           page: page ? Number(page) : 1,
           limit: limit ? Number(limit) : 10,
-          search: search as string,
+          where,
+          include: [
+            {
+              model: Organization,
+              as: "organization",
+              attributes: ["id", "name"],
+            },
+            {
+              model: Employee,
+              as: "employees",
+              attributes: ["id", "firstName", "lastName", "isActive"],
+            },
+          ],
+        });
+
+      res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message || "Failed to get departments",
+      });
+    }
+  }
+
+  static async lookupDepartments(req: Request, res: Response): Promise<void> {
+    try {
+      const { page, limit, search } = req.body;
+
+      const where: any = {};
+
+      where.organizationId = Number(req.user?.organizationId);
+
+      if (search) {
+        where.name = { [Op.like]: `%${search}%` };
+      }
+
+      const result =
+        await DepartmentController.departmentService.findWithPagination({
+          page: page ? Number(page) : 1,
+          limit: limit ? Number(limit) : 10,
           where,
           include: [
             {

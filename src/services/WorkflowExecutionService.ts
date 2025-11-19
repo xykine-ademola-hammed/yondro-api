@@ -5,6 +5,9 @@ import {
   Workflow,
   Employee,
   Position,
+  Voucher,
+  VoucherLine,
+  VoteBookAccount,
 } from "../models";
 import {
   WorkflowRequestStatus,
@@ -13,8 +16,16 @@ import {
   NextStageResponse,
   statusMapper,
 } from "../types";
+import {
+  buildInboxParams,
+  WORKFLOW_INBOX_COUNT_SQL,
+  WORKFLOW_INBOX_SQL_CTE,
+  WorkflowInboxFilter,
+  WorkflowInboxPage,
+  WorkflowInboxRow,
+} from "../utils/requestQuery-helper";
 import { StageUtils } from "../utils/stageUtils";
-import { Op } from "sequelize";
+import { Op, QueryTypes, Sequelize } from "sequelize";
 
 export class WorkflowExecutionService {
   /**
@@ -257,8 +268,14 @@ export class WorkflowExecutionService {
         actedAt: new Date(),
       });
 
+      const resubmissionStage = await Stage.findOne({
+        where: {
+          workflowId: stage.request.workflow.id,
+          isResubmissionStage: true,
+        },
+      });
+
       if (data.action === "Reject") {
-        console.log("Sibl=======data.action=======jected:", data.action);
         if (stage.isSubStage) {
           const siblingStages = await WorkflowInstanceStage.findAll({
             where: {
@@ -269,31 +286,72 @@ export class WorkflowExecutionService {
               },
               isSubStage: true,
               status: { [Op.ne]: "Pending" },
+              isResubmission: false,
             },
             order: [["step", "ASC"]],
           });
 
+          await WorkflowInstanceStage.update(
+            {
+              isResubmission: true,
+            },
+            { where: { parentStep: stage.parentStep } }
+          );
+
           if (siblingStages.length > 0) {
-            for (let i = 0; i < siblingStages.length; i++) {
-              await siblingStages[i].update({
-                // status: WorkflowInstanceStageStatus.REJECTED,
-                isResubmission: true,
-              });
-              await WorkflowInstanceStage.create({
-                isSubStage: true,
-                isResubmission: false,
-                stageName: siblingStages[i]?.stageName,
-                step: siblingStages[i].step,
-                parentStep: siblingStages[i].parentStep,
-                workflowRequestId: stage.workflowRequestId,
-                assignedToUserId: siblingStages[i].assignedToUserId,
-                status: WorkflowInstanceStageStatus.PENDING,
-                fieldResponses: {},
-                stageId: siblingStages[i].stageId,
-                organizationId: siblingStages[i].organizationId,
-              });
-            }
+            // Only create the fist one, this will prevent creating siblings upfront and it won't show in UI
+            await WorkflowInstanceStage.create({
+              isSubStage: true,
+              isResubmission: false,
+              stageName: siblingStages[0]?.stageName,
+              step: siblingStages[0].step,
+              parentStep: siblingStages[0].parentStep,
+              workflowRequestId: stage.workflowRequestId,
+              assignedToUserId: siblingStages[0].assignedToUserId,
+              status: WorkflowInstanceStageStatus.PENDING,
+              fieldResponses: {},
+              stageId: siblingStages[0].stageId,
+              organizationId: siblingStages[0].organizationId,
+            });
           }
+        } else if (resubmissionStage) {
+          // Check if the workflow has a rejectResubmitStep
+          // mark every stageInstance step above the rejectResubmitStep to isResubmission
+          await WorkflowInstanceStage.update(
+            { isResubmission: true },
+            {
+              where: {
+                workflowRequestId: stage.request.id,
+                step: {
+                  [Op.gt]: Number(resubmissionStage.step),
+                },
+              },
+            }
+          );
+
+          const stageInstanceClone = await WorkflowInstanceStage.findOne({
+            where: {
+              workflowRequestId: stage.request.id,
+              step: Number(resubmissionStage.step),
+            },
+          });
+
+          // Then update that stageInstance (for rejectResubmitStep) to Pending
+          await WorkflowInstanceStage.create({
+            isSubStage: true,
+            isResubmission: false,
+            stageName: stageInstanceClone?.stageName,
+            step: stageInstanceClone?.step,
+            parentStep: stageInstanceClone?.parentStep,
+            workflowRequestId: stage.workflowRequestId,
+            assignedToUserId: stageInstanceClone?.assignedToUserId,
+            status: WorkflowInstanceStageStatus.PENDING,
+            fieldResponses: {},
+            stageId: stageInstanceClone?.stageId,
+            organizationId: stageInstanceClone?.organizationId,
+          });
+
+          console.log("=========10==========");
         } else {
           await stage.request!.update({
             status: WorkflowRequestStatus.REJECTED,
@@ -304,109 +362,279 @@ export class WorkflowExecutionService {
       }
 
       // Handle approval
-      if (stage.isSubStage) {
-        // Check if this is the final sub-stage (Approver)
-        const siblingStages = await WorkflowInstanceStage.findAll({
-          where: {
-            workflowRequestId: stage.workflowRequestId,
-            parentStep: stage.parentStep,
-            isSubStage: true,
-          },
+      // Check if this is sub-stage (Approver)
+      const nextStage = await Stage.findOne({
+        where: {
+          workflowId: stage.request.workflow.id,
+          step: Number(stage.step) + 1,
+        },
+      });
+
+      console.log("------------1---------------");
+
+      if (nextStage?.isSubStage) {
+        // Create nextSibling
+        await StageUtils.createNextSubStage(data, stage, nextStage);
+      } else if (nextStage) {
+        console.log("------------2---------------");
+        // Create next main stage
+        // Get next main stage from workflow
+        await StageUtils.createNextMainStage(data, stage);
+      } else {
+        // No more stages - mark request as approved
+
+        await stage.request!.update({
+          status: WorkflowRequestStatus.APPROVED,
+        });
+      }
+
+      // Check if the stage of the stateInstance require creation of request for Voucher Creation.
+      if (stage.stage.triggerVoucherCreation) {
+        // Data should have information about the Head of Voucher Unit
+        const voucherWorkflow = await Workflow.findOne({
+          where: { name: "Payment Voucher Auto" },
+          include: [
+            {
+              model: Stage,
+              as: "stages",
+              order: [["step", "ASC"]], // Order stages by step in ascending order
+            },
+          ],
           order: [
-            ["step", "DESC"],
             ["createdAt", "DESC"],
+            [{ model: Stage, as: "stages" }, "step", "ASC"],
           ],
         });
-
-        const isLastSubStage = siblingStages[0].id === stage.id;
-
-        if (isLastSubStage) {
-          // Create next main stage
-          // Get next main stage from workflow
-          const nextStage = await StageUtils.createNextMainStage(data, stage);
-
-          // No more stages - mark request as approved
-          if (!nextStage) {
-            await stage.request!.update({
-              status: WorkflowRequestStatus.APPROVED,
-            });
-          }
-        }
-
-        return;
-      } else {
-        // if nest stage is a subStage, then create internal stages
-        const subStages = await Stage.findAll({
-          where: {
-            workflowId: stage.request.workflowId,
-            parentStep: Number(stage.step),
-            isSubStage: true,
+        const firstStage = voucherWorkflow?.stages[0];
+        const secondStage = voucherWorkflow?.stages[1];
+        const voucherWorkflowRequest = await WorkflowRequest.create({
+          formId: voucherWorkflow?.formId,
+          formResponses: {
+            unitVoucherHeadById: data?.formResponses?.unitVoucherHeadById,
+            financeCode: data?.formResponses?.financeCode,
+            departmentCode: data?.formResponses?.departmentCode,
+            requestor: {
+              firstName: data?.user?.firstName,
+              lastName: data?.user?.lastName,
+              date: new Date(),
+              department: data?.user?.department?.name,
+              position: data?.user?.position?.title,
+            },
           },
-          order: [["step", "ASC"]],
+          workflowId: voucherWorkflow?.id,
+          requestorId: data?.user?.id,
+          organizationId: data?.user?.organizationId,
+          status: WorkflowRequestStatus.PENDING,
+          createdBy: data?.user?.id,
+          parentRequestId: stage.request.id,
         });
 
-        if (subStages.length > 0) {
-          for (let i = 0; i < subStages.length; i++) {
-            let assignedToUserId: number = data.actedByUserId;
-
-            // check if the second stage need an employee to be assigned
-            if (
-              subStages[i].assigineeLookupField &&
-              data?.formResponses &&
-              data?.formResponses[subStages[i].assigineeLookupField]
-            ) {
-              assignedToUserId =
-                data?.formResponses[subStages[i].assigineeLookupField];
-            } else {
-              const subStageEmployee = await Employee.findOne({
-                where: {
-                  positionId: subStages[i].assigneePositionId,
-                },
-              });
-              if (subStageEmployee) assignedToUserId = subStageEmployee?.id;
-            }
-
-            await WorkflowInstanceStage.create({
-              ...subStages[i],
-              isSubStage: true,
-              isResubmission: false,
-              stageName: subStages[i].name,
-              step: subStages[i].step,
-              parentStep: subStages[i].parentStep,
-              workflowRequestId: stage.workflowRequestId,
-              assignedToUserId,
-              status: WorkflowInstanceStageStatus.PENDING,
-              fieldResponses: {},
-              stageId: subStages[i].id,
-              organizationId: subStages[i].organizationId,
-            });
-          }
-        } else {
-          console.log("--------------------------SU==2=====");
-          // Main stage approved
-          // Get next main stage from workflow
-          const nextStage = await StageUtils.createNextMainStage(data, stage);
-
-          console.log("--------------------------SU===1====", nextStage);
-
-          // No more stages - mark request as approved
-          if (!nextStage) {
-            await WorkflowRequest.update(
-              { status: WorkflowRequestStatus.APPROVED },
-              {
-                where: {
-                  id: stage.request.id,
-                },
-              }
-            );
-          }
-
-          return;
-        }
+        await WorkflowInstanceStage.create({
+          workflowRequestId: voucherWorkflowRequest?.id,
+          stageName: firstStage?.name,
+          step: firstStage?.step,
+          assignedToUserId: data?.user?.id,
+          status: WorkflowInstanceStageStatus.SUBMITTED,
+          fieldResponses: {},
+          stageId: firstStage?.id,
+          isSubStage: false,
+          isResubmission: false,
+          actedByUserId: data?.user?.id,
+          organizationId: data?.user?.organizationId,
+        });
+        await WorkflowInstanceStage.create({
+          workflowRequestId: voucherWorkflowRequest?.id,
+          stageName: secondStage?.name,
+          step: secondStage?.step,
+          assignedToUserId: data?.formResponses?.unitVoucherHeadById,
+          status: WorkflowInstanceStageStatus.PENDING,
+          fieldResponses: { ...data?.formResponses },
+          stageId: secondStage?.id,
+          isSubStage: false,
+          isResubmission: false,
+          actedByUserId: data?.formResponses?.unitVoucherHeadById,
+          organizationId: data?.user?.organizationId,
+        });
       }
+
+      return;
     } catch (error) {
       console.error("-----------------------------D-RRRR--------", error);
-      console.log("-----------------------------D-RRRR--------", error);
     }
   }
+
+  static async processStageVoucher(
+    data: StageCompletionData & { actedByUserId: number }
+  ): Promise<void> {
+    // Dealing with Entrying Votebook information and posting voucher
+    const stage = await WorkflowInstanceStage.findByPk(data.stageId, {
+      include: [
+        { model: Stage, as: "stage" },
+        { model: WorkflowRequest, as: "request", include: [Workflow] },
+      ],
+    });
+
+    const existingVoucher = await Voucher.findOne({
+      where: { entityId: stage?.request.id },
+    });
+
+    // Rejected Clear the existing Voucher and Voucher Lines
+    if (existingVoucher && data.action === "Reject") {
+      const existingVoucherLine = await VoucherLine.findOne({
+        where: { voucher_id: existingVoucher.id },
+      });
+
+      // postToVoteBook
+      await VoteBookAccount.update(
+        {
+          spent: VoteBookAccount.sequelize!.literal(
+            `spent - ${existingVoucherLine?.total_amount}`
+          ),
+        },
+        {
+          where: { id: existingVoucherLine?.account_id },
+        }
+      );
+
+      await existingVoucherLine?.destroy();
+      await existingVoucher.destroy();
+    } else if (
+      stage?.stage.triggerVotebookEntry &&
+      stage?.status === "Approved"
+    ) {
+      const voucher_number = await generateVoucherNumber(
+        data?.user?.organizationId
+      );
+
+      const voucher = await Voucher.create({
+        voucher_number,
+        organization_id: data?.user?.organizationId!,
+        requester_id: data.user!.id,
+        payee_name: stage.request.formResponses.applicantName,
+        payee_address: stage.request.formResponses.applicantAddress,
+        purpose: stage.request.formResponses.applicantDescription,
+        total_amount: stage.request.formResponses.debitAmount,
+        tax_amount: 0,
+        net_amount: stage.request.formResponses.debitAmount,
+        currency: "NGN",
+        priority: "high",
+        due_date: undefined,
+        invoice_number: stage.request.formResponses.voucherNo,
+        po_number: stage.request.formResponses.voucherNo,
+        notes: "",
+        status: "posted",
+        attachment_count: 0,
+        entityId: stage.request.id,
+      });
+
+      const line = await VoucherLine.create({
+        voucher_id: voucher.id,
+        account_id: stage.request.formResponses.selectedVoucherAccount?.id,
+        line_number: 1,
+        description: stage.request.formResponses.paymentParticles,
+        quantity: 1,
+        unit_cost: stage.request.formResponses.paymentDetailAmount,
+        total_amount: stage.request.formResponses.paymentDetailAmount,
+        tax_code: stage.request.formResponses.accountCodeNo,
+        tax_amount: 0,
+      });
+
+      // postToVoteBook
+      await VoteBookAccount.update(
+        {
+          spent: VoteBookAccount.sequelize!.literal(
+            `spent + ${line.total_amount}`
+          ),
+        },
+        {
+          where: { id: line.account_id },
+        }
+      );
+    }
+  }
+
+  static async fetchWorkflowInboxPage(
+    sequelize: Sequelize,
+    filters: WorkflowInboxFilter
+  ): Promise<WorkflowInboxPage> {
+    const limit = filters.limit ?? 10;
+    const offset = filters.offset ?? 0;
+    const params = buildInboxParams({ ...filters, limit, offset });
+
+    // 1) Get total count
+    const [countRow] = await sequelize.query<{ totalItems: number }>(
+      WORKFLOW_INBOX_COUNT_SQL,
+      {
+        type: QueryTypes.SELECT,
+        replacements: params,
+        raw: true,
+      }
+    );
+
+    const totalItems = countRow?.totalItems ?? 0;
+    const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / limit);
+    const page = totalItems === 0 ? 0 : Math.floor(offset / limit) + 1;
+
+    // 2) Get paginated rows
+    const rows = await sequelize.query<WorkflowInboxRow>(
+      WORKFLOW_INBOX_SQL_CTE,
+      {
+        type: QueryTypes.SELECT,
+        replacements: params,
+        nest: true,
+        raw: true,
+      }
+    );
+
+    return {
+      rows,
+      totalItems,
+      totalPages,
+      page,
+      limit,
+    };
+  }
+
+  static async fetchWorkflowInbox(
+    sequelize: Sequelize,
+    filters: WorkflowInboxFilter
+  ): Promise<WorkflowInboxRow[]> {
+    const params = buildInboxParams(filters);
+
+    const rows = await sequelize.query<WorkflowInboxRow>(
+      WORKFLOW_INBOX_SQL_CTE,
+      {
+        type: QueryTypes.SELECT,
+        replacements: params,
+        nest: true, // "workflow.id" -> { workflow: { id: ... } }
+        raw: true,
+      }
+    );
+
+    return rows;
+  }
 }
+
+const generateVoucherNumber = async (organizationId?: number) => {
+  const year = new Date().getFullYear();
+  const lastVoucher = await Voucher.findOne({
+    where: {
+      organization_id: organizationId!,
+      voucher_number: {
+        [Op.like]: `${organizationId}-${year}-%`,
+      },
+    },
+    order: [["created_at", "DESC"]],
+  });
+
+  let sequence = 1;
+  if (lastVoucher) {
+    const lastSequence = parseInt(lastVoucher.voucher_number.split("-")[2]);
+    sequence = lastSequence + 1;
+  }
+
+  const voucher_number = `${organizationId}-${year}-${sequence
+    .toString()
+    .padStart(6, "0")}`;
+  return voucher_number;
+};

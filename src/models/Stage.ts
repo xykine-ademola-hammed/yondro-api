@@ -60,6 +60,18 @@ export class Stage extends Model {
   step!: number;
 
   @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  isResubmissionStage!: boolean;
+
+  @Column({
+    type: DataType.BOOLEAN,
+    defaultValue: false,
+  })
+  isPriorityComment!: boolean;
+
+  @Column({
     type: DataType.INTEGER,
     allowNull: true,
   })
@@ -81,14 +93,13 @@ export class Stage extends Model {
     type: DataType.BOOLEAN,
     defaultValue: false,
   })
-  isRequestorDepartment!: boolean;
+  isRequestorParent!: boolean;
 
-  @ForeignKey(() => Department)
   @Column({
-    type: DataType.INTEGER,
-    allowNull: true,
+    type: DataType.BOOLEAN,
+    defaultValue: false,
   })
-  assigneeDepartmentId?: number;
+  hasSplitAssignee!: boolean;
 
   @Column({
     type: DataType.INTEGER,
@@ -112,7 +123,7 @@ export class Stage extends Model {
     type: DataType.BOOLEAN,
     defaultValue: false,
   })
-  trigerVoucherCreation!: boolean;
+  triggerVoucherCreation!: boolean;
 
   @Column({
     type: DataType.BOOLEAN,
@@ -136,7 +147,43 @@ export class Stage extends Model {
     type: DataType.JSON,
     defaultValue: {},
   })
-  splitPositions!: Record<string, any>;
+  get splitPositions(): Record<string, any>[] {
+    const raw = this.getDataValue("splitPositions") as unknown;
+    // Already an array
+    if (Array.isArray(raw)) return raw;
+    // Cloud sometimes returns JSON as a string – parse it safely
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    // Anything else -> empty array
+    return [];
+  }
+
+  set splitPositions(val: unknown) {
+    // Accept string | string[] | unknown, normalize to string[]
+    if (Array.isArray(val)) {
+      this.setDataValue("splitPositions", val);
+      return;
+    }
+    if (typeof val === "string") {
+      try {
+        const parsed = JSON.parse(val);
+        this.setDataValue(
+          "responseTypes",
+          Array.isArray(parsed) ? parsed : [val]
+        );
+      } catch {
+        this.setDataValue("responseTypes", [val]); // treat plain string as single item
+      }
+      return;
+    }
+    this.setDataValue("responseTypes", []); // fallback
+  }
 
   @Column({
     type: DataType.JSON,
@@ -196,9 +243,6 @@ export class Stage extends Model {
   @BelongsTo(() => Workflow)
   workflow!: Workflow;
 
-  @BelongsTo(() => Department)
-  department!: Department;
-
   @HasMany(() => WorkflowInstanceStage)
   instances!: WorkflowInstanceStage[];
 }
@@ -213,10 +257,10 @@ export interface StageAttributes {
   parentStep: number;
   isSubStage: boolean;
   isRequestor: boolean;
-  trigerVoucherCreation: boolean;
+  isRequestorParent: boolean;
+  hasSplitAssignee: boolean;
+  triggerVoucherCreation: boolean;
   triggerVotebookEntry: boolean;
-  isRequestorDepartment: boolean;
-  assigneeDepartmentId?: number;
   assigneePositionId?: number;
   assigineeLookupField: string;
   isRequireApproval: boolean;

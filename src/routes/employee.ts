@@ -23,6 +23,13 @@ router.get(
   authorize(UserRole.ADMIN, UserRole.MANAGER),
   EmployeeController.getAll
 );
+
+router.post(
+  "/employees/lookup",
+  authenticate,
+  EmployeeController.lookupEmployees
+);
+
 router.get(
   "/employee/:id",
   authenticate,

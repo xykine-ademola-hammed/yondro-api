@@ -1,5 +1,6 @@
 import { Router } from "express";
 import workflowExecutionRoutes from "./workflowExecution";
+import workflowInstanceStageRoutes from "./workflow-instance-stages";
 import workflowRoutes from "./workflow";
 import organizationRoutes from "./organization";
 import departmentRoutes from "./department";
@@ -19,6 +20,7 @@ const router = Router();
 // Mount all routes
 router.use("/api", authRoutes);
 router.use("/api", workflowExecutionRoutes);
+router.use("/api", workflowInstanceStageRoutes);
 router.use("/api", workflowRoutes);
 router.use("/api", schoolOrOffices);
 router.use("/api", organizationRoutes);

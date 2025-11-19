@@ -180,6 +180,45 @@ export class EmployeeController {
     }
   }
 
+  static async lookupEmployees(req: Request, res: Response): Promise<void> {
+    try {
+      const page = Number(req.body.page) || 1;
+      const limit = Number(req.body.limit) || 10;
+      const search = req.body.search?.trim();
+
+      const where: any = {
+        organizationId: Number(req.user?.organizationId),
+      };
+
+      // 🔍 Optional search across multiple fields
+      if (search) {
+        where[Op.or] = [
+          { firstName: { [Op.like]: `%${search}%` } },
+          { lastName: { [Op.like]: `%${search}%` } },
+          { email: { [Op.like]: `%${search}%` } },
+        ];
+      }
+
+      const result =
+        await EmployeeController.employeeService.findWithPagination({
+          page,
+          limit,
+          where,
+          orderby: [["firstName", "ASC"]],
+        });
+
+      res.json({
+        success: true,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("lookupDepartments error:", error);
+      res.status(500).json({
+        error: error.message || "Failed to lookup departments",
+      });
+    }
+  }
+
   /**
    * GET /employee/:id - Get employee by ID
    */

@@ -8,6 +8,7 @@ import {
   UpdatedAt,
   ForeignKey,
   BelongsTo,
+  HasOne,
 } from "sequelize-typescript";
 import { Organization } from "./Organization";
 import { Workflow } from "./Workflow";
@@ -129,6 +130,19 @@ export class WorkflowRequest extends Model {
 
   @HasMany(() => WorkflowInstanceStage)
   stages!: WorkflowInstanceStage[];
+
+  /**
+   * Parent workflow request (nullable)
+   * This row has parentRequestId -> parent.id
+   */
+  @BelongsTo(() => WorkflowRequest, "parentRequestId")
+  parentRequest?: WorkflowRequest | null;
+
+  /**
+   * Optional: all children that reference this as parentRequestId
+   */
+  @HasMany(() => WorkflowRequest, "parentRequestId")
+  childRequests?: WorkflowRequest[];
 }
 
 export interface WorkflowRequestAttributes {
