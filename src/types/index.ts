@@ -63,6 +63,8 @@ export interface StageCompletionData {
   fieldResponses?: Record<string, any>;
   formResponses?: Record<string, any>;
   user?: any;
+  actedByUserId?: number;
+  actionUnitGroupId?: string;
 }
 
 export interface InternalSendBackData {

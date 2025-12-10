@@ -64,10 +64,12 @@ export class WorkflowExecutionController {
         return;
       }
 
+      const applicantId = formResponses.applicant.id || requestorId;
+
       const workflowRequest =
         await WorkflowExecutionService.startWorkflowRequest(
           workflowId,
-          requestorId,
+          applicantId,
           actedByUserId,
           formResponses,
           req.user
@@ -307,8 +309,6 @@ export class WorkflowExecutionController {
           offset: offset ?? 0,
         }
       );
-
-      console.log("=============111================>>>>>>>>", result);
 
       res.json(result);
     } catch (error: any) {

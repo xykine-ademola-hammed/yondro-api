@@ -143,6 +143,7 @@ export class BudgetAdjustmentController {
 
   static async createAdjustment(req: Request, res: Response) {
     const t = await sequelize.transaction();
+    let committed = false;
 
     try {
       const {
@@ -243,6 +244,8 @@ export class BudgetAdjustmentController {
         req?.user?.organizationId
       }-${year}-${sequence.toString().padStart(6, "0")}`;
 
+      const amountNum = Number(amount);
+
       // Create budget adjustment
       const adjustment = await BudgetAdjustment.create(
         {
@@ -250,7 +253,7 @@ export class BudgetAdjustmentController {
           adjustment_type,
           from_account_id,
           to_account_id,
-          amount: Number(amount),
+          amount: amountNum,
           justification,
           requestor_id: req.user!.id,
           status: "PENDING",
@@ -261,21 +264,81 @@ export class BudgetAdjustmentController {
         { transaction: t }
       );
 
-      // Log the creation
-      await AuditService.logEvent({
-        userId: req?.user?.id!,
-        actorId: req.user!.id,
-        eventType: AuditEventType.BUDGET_ADJUSTMENT,
-        ip: req.ip,
-        meta: {
-          action: "create",
+      // Execute the fund movement based on adjustment type
+      switch (adjustment.adjustment_type) {
+        case "SUPPLEMENT":
+          // Add to destination account's sum_adjust_in
+          await VoteBookAccount.increment("sum_adjust_in", {
+            by: amountNum,
+            where: { id: adjustment.to_account_id },
+            transaction: t,
+          });
+          break;
+
+        case "REDUCTION":
+          // Add to destination account's sum_adjust_out
+          await VoteBookAccount.increment("sum_adjust_out", {
+            by: amountNum,
+            where: { id: adjustment.to_account_id },
+            transaction: t,
+          });
+          break;
+
+        case "TRANSFER":
+          if (!adjustment.from_account_id) {
+            throw new Error("Transfer requires source account");
+          }
+          // Subtract from source account's sum_transfer_out and add to destination account's sum_transfer_in
+          await VoteBookAccount.increment("sum_transfer_out", {
+            by: amountNum,
+            where: { id: adjustment.from_account_id },
+            transaction: t,
+          });
+          await VoteBookAccount.increment("sum_transfer_in", {
+            by: amountNum,
+            where: { id: adjustment.to_account_id },
+            transaction: t,
+          });
+          break;
+
+        case "CARRYFORWARD":
+          // Add to destination account's carryover
+          await VoteBookAccount.increment("carryover", {
+            by: amountNum,
+            where: { id: adjustment.to_account_id },
+            transaction: t,
+          });
+          break;
+
+        case "REVERSAL":
+          // Reverse a previous transaction (reduce committed or spent)
+          await VoteBookAccount.decrement("committed", {
+            by: amountNum,
+            where: { id: adjustment.to_account_id },
+            transaction: t,
+          });
+          break;
+
+        default:
+          throw new Error(
+            `Unknown adjustment type: ${adjustment.adjustment_type}`
+          );
+      }
+
+      // Update adjustment status
+      await adjustment.update(
+        {
+          status: "POSTED",
+          posted_date: new Date(),
         },
-        userAgent: req.get("Employee-Agent"),
-      });
+        { transaction: t }
+      );
 
+      // Commit transactional work before any non-critical operations
       await t.commit();
+      committed = true;
 
-      // Fetch the created adjustment with includes
+      // Fetch the created adjustment with includes (outside transaction)
       const createdAdjustment = await BudgetAdjustment.findByPk(adjustment.id, {
         include: [
           {
@@ -291,11 +354,53 @@ export class BudgetAdjustmentController {
         ],
       });
 
-      res.status(201).json(createdAdjustment);
+      // Single response
+      res.status(201).json({
+        message: "Budget adjustment posted successfully",
+        adjustment: createdAdjustment,
+      });
+
+      // Best-effort audit logging after response; do not impact transaction or response
+      try {
+        await AuditService.logEvent({
+          userId: req?.user?.id!,
+          actorId: req.user!.id,
+          eventType: AuditEventType.BUDGET_ADJUSTMENT,
+          ip: req.ip,
+          meta: {
+            action: "post",
+          },
+          userAgent: req.get("Employee-Agent"),
+        });
+
+        await AuditService.logEvent({
+          userId: req?.user?.id!,
+          actorId: req.user!.id,
+          eventType: AuditEventType.BUDGET_ADJUSTMENT,
+          ip: req.ip,
+          meta: {
+            action: "create",
+          },
+          userAgent: req.get("Employee-Agent"),
+        });
+      } catch (logErr) {
+        console.error(
+          "Audit logging failed after adjustment creation:",
+          logErr
+        );
+      }
     } catch (error) {
-      await t.rollback();
+      if (!committed) {
+        try {
+          await t.rollback();
+        } catch (rbErr) {
+          console.error("Rollback failed:", rbErr);
+        }
+      }
       console.error("Create budget adjustment error:", error);
-      res.status(500).json({ message: "Server error" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Server error" });
+      }
     }
   }
 

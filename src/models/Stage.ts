@@ -114,6 +114,12 @@ export class Stage extends Model {
   assigineeLookupField!: string;
 
   @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  actionUnitType!: string;
+
+  @Column({
     type: DataType.BOOLEAN,
     defaultValue: false,
   })

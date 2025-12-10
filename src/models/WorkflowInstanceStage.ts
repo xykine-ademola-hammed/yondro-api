@@ -99,6 +99,12 @@ export class WorkflowInstanceStage extends Model {
   })
   isResubmission!: boolean;
 
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  actionUnitGroupId!: string;
+
   @ForeignKey(() => WorkflowInstanceStage)
   @Column({
     type: DataType.INTEGER,

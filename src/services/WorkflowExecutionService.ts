@@ -8,6 +8,7 @@ import {
   Voucher,
   VoucherLine,
   VoteBookAccount,
+  Department,
 } from "../models";
 import {
   WorkflowRequestStatus,
@@ -57,6 +58,17 @@ export class WorkflowExecutionService {
       throw new Error("Workflow not found or has no initial stage");
     }
 
+    let requestorData = user;
+
+    if (requestorId !== user?.id) {
+      requestorData = await Employee.findByPk(requestorId, {
+        include: [Position, Department],
+      });
+      if (!requestorData) {
+        throw new Error("Requestor not found");
+      }
+    }
+
     const firstStage = workflow.stages[0];
 
     // Create workflow request
@@ -65,12 +77,12 @@ export class WorkflowExecutionService {
       formResponses: {
         ...formResponses,
         requestor: {
-          firstName: user.firstName,
-          lastName: user.lastName,
+          firstName: requestorData.firstName,
+          lastName: requestorData.lastName,
           date: new Date(),
-          department: user?.department?.name,
-          position: user?.position?.title,
-          category: user.position.category,
+          department: requestorData.department.name,
+          position: requestorData.position?.title,
+          category: requestorData.category,
         },
       },
       workflowId,
@@ -261,6 +273,7 @@ export class WorkflowExecutionService {
       // Update current stage
       const newStatus = statusMapper[data.action] || statusMapper["Reject"];
       await stage.update({
+        actionUnitGroupId: data.actionUnitGroupId ?? null,
         status: newStatus,
         fieldResponses: data.fieldResponses,
         comment: data.comment,

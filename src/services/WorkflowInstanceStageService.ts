@@ -80,75 +80,228 @@ export async function findUserInboxWithCTE(
    *    - ORDER BY stageCreatedAt DESC, stageId DESC
    *    - LIMIT/OFFSET applied here only
    */
-  const sql = `
-    WITH filtered_stages AS (
-      SELECT
-        wis.*
-      FROM workflow_instance_stages AS wis
-      WHERE
-        wis.organization_id = :organizationId
-        AND wis.assigned_to_user_id = :assignedToUserId
-        AND wis.status = :stageStatus
-    ),
-    joined_rows AS (
-      SELECT
-        -- Stage (from filtered_stages)
-        fs.id                AS stageId,
-        fs.stage_name        AS stageName,
-        fs.status            AS stageStatus,
-        fs.step              AS stageStep,
-        fs.created_at        AS stageCreatedAt,
-        fs.updated_at        AS stageUpdatedAt,
 
-        -- WorkflowRequest
-        wr.id                AS requestId,
-        wr.status            AS requestStatus,
-        wr.created_at        AS requestCreatedAt,
-        wr.updated_at        AS requestUpdatedAt,
-        wr.form_id           AS requestFormId,
-        wr.workflow_id       AS requestWorkflowId,
+  const sql2 = `WITH filtered_stages AS (
+  SELECT
+    wis.*,
+    s.action_unit_type
+  FROM workflow_instance_stages AS wis
+  JOIN stages AS s
+    ON s.id = wis.stage_id
+    AND s.organization_id = :organizationId
+  WHERE
+    wis.organization_id       = :organizationId
+    AND wis.assigned_to_user_id = :assignedToUserId
+    AND wis.status            = :stageStatus
+),
 
-        -- Workflow
-        w.id                 AS workflowId,
-        w.form_id            AS workflowFormId,
-        w.name               AS workflowName,
-        w.description        AS workflowDescription,
+joined_rows AS (
+  SELECT
+    -- Stage (from filtered_stages)
+    fs.id                AS stageId,
+    fs.stage_name        AS stageName,
+    fs.status            AS stageStatus,
+    fs.step              AS stageStep,
+    fs.created_at        AS stageCreatedAt,
+    fs.updated_at        AS stageUpdatedAt,
+    fs.action_unit_type  AS actionUnitType,
+    fs.action_unit_group_id AS actionUnitGroupId,
 
-        -- Requestor (Employee)
-        e.id                 AS requestorId,
-        e.first_name         AS requestorFirstName,
-        e.last_name          AS requestorLastName,
-        e.email              AS requestorEmail,
-        e.department_id      AS requestorDepartmentId,
-        d.name               AS departmentName
-      FROM filtered_stages AS fs
-      INNER JOIN workflow_requests AS wr
-        ON wr.id = fs.workflow_request_id
-        AND wr.organization_id = :organizationId
-      INNER JOIN workflows AS w
-        ON w.id = wr.workflow_id
-        AND w.organization_id = :organizationId
-      INNER JOIN employees AS e
-        ON e.id = wr.requestor_id
-        AND e.organization_id = :organizationId
-      LEFT JOIN departments AS d
-        ON d.id = e.department_id AND d.organization_id = :organizationId
-      WHERE 1 = 1
-        AND (:departmentId IS NULL OR e.department_id = :departmentId)
-        AND (:formId IS NULL OR w.form_id = :formId)
-        AND (:employeeId IS NULL OR wr.requestor_id = :employeeId)
-    )
-    SELECT
-      jr.*,
-      COUNT(*) OVER () AS total_items
-    FROM joined_rows AS jr
-    ORDER BY jr.stageCreatedAt DESC, jr.stageId DESC
-    LIMIT :limit OFFSET :offset;
+    -- WorkflowRequest
+    wr.id                AS requestId,
+    wr.status            AS requestStatus,
+    wr.created_at        AS requestCreatedAt,
+    wr.updated_at        AS requestUpdatedAt,
+    wr.form_id           AS requestFormId,
+    wr.workflow_id       AS requestWorkflowId,
+
+    -- Workflow
+    w.id                 AS workflowId,
+    w.form_id            AS workflowFormId,
+    w.name               AS workflowName,
+    w.description        AS workflowDescription,
+
+    -- Requestor (Employee)
+    e.id                 AS requestorId,
+    e.first_name         AS requestorFirstName,
+    e.last_name          AS requestorLastName,
+    e.email              AS requestorEmail,
+    e.department_id      AS requestorDepartmentId,
+    d.name               AS departmentName
+  FROM filtered_stages AS fs
+  INNER JOIN workflow_requests AS wr
+    ON wr.id = fs.workflow_request_id
+    AND wr.organization_id = :organizationId
+  INNER JOIN workflows AS w
+    ON w.id = wr.workflow_id
+    AND w.organization_id = :organizationId
+  INNER JOIN employees AS e
+    ON e.id = wr.requestor_id
+    AND e.organization_id = :organizationId
+  LEFT JOIN departments AS d
+    ON d.id = e.department_id
+   AND d.organization_id = :organizationId
+  WHERE 1 = 1
+    AND (:departmentId IS NULL OR e.department_id = :departmentId)
+    AND (:formId      IS NULL OR w.form_id       = :formId)
+    AND (:employeeId  IS NULL OR wr.requestor_id = :employeeId)
+),
+
+messages_agg AS (
+  SELECT
+    m.entity_id                 AS requestId,
+    COUNT(*)                    AS messageCount,
+    MAX(m.created_at)           AS lastMessageAt,
+    JSON_ARRAYAGG(m.member_ids) AS messageMemberIds
+  FROM messages m
+  WHERE
+    m.organization_id = :organizationId
+    AND m.entity_type  = 'REQUEST'
+    -- ✅ Only messages where member_ids contains the assignedToUserId
+    AND JSON_CONTAINS(
+          m.member_ids,
+          CAST(:assignedToUserId AS JSON),
+          '$'
+        )
+  GROUP BY
+    m.entity_id
+),
+
+joined_with_messages AS (
+  SELECT
+    jr.*,
+    ma.messageCount,
+    ma.messageMemberIds,
+    ma.lastMessageAt,
+    (SELECT COUNT(DISTINCT COALESCE(jr2.actionUnitGroupId, jr2.stageId)) FROM joined_rows jr2) AS total_items,
+    ROW_NUMBER() OVER (
+      PARTITION BY COALESCE(jr.actionUnitGroupId, jr.stageId)
+      ORDER BY jr.stageCreatedAt DESC, jr.stageId DESC
+    ) AS rn
+  FROM joined_rows AS jr
+  LEFT JOIN messages_agg AS ma
+    ON ma.requestId = jr.requestId
+)
+
+SELECT
+  *
+FROM joined_with_messages
+WHERE rn = 1
+ORDER BY stageCreatedAt DESC, stageId DESC
+LIMIT :limit OFFSET :offset;
+`;
+
+  const sql = `WITH filtered_stages AS (
+  SELECT
+    wis.*,
+    s.action_unit_type
+  FROM workflow_instance_stages AS wis
+  JOIN stages AS s
+    ON s.id = wis.stage_id
+    AND s.organization_id = :organizationId
+  WHERE
+    wis.organization_id       = :organizationId
+    AND wis.assigned_to_user_id = :assignedToUserId
+    AND wis.status            = :stageStatus
+),
+
+joined_rows AS (
+  SELECT
+    -- Stage (from filtered_stages)
+    fs.id                AS stageId,
+    fs.stage_name        AS stageName,
+    fs.status            AS stageStatus,
+    fs.step              AS stageStep,
+    fs.created_at        AS stageCreatedAt,
+    fs.updated_at        AS stageUpdatedAt,
+    fs.action_unit_type  AS actionUnitType,
+    fs.action_unit_group_id AS actionUnitGroupId,
+
+    -- WorkflowRequest
+    wr.id                AS requestId,
+    wr.status            AS requestStatus,
+    wr.created_at        AS requestCreatedAt,
+    wr.updated_at        AS requestUpdatedAt,
+    wr.form_id           AS requestFormId,
+    wr.workflow_id       AS requestWorkflowId,
+
+    -- Workflow
+    w.id                 AS workflowId,
+    w.form_id            AS workflowFormId,
+    w.name               AS workflowName,
+    w.description        AS workflowDescription,
+
+    -- Requestor (Employee)
+    e.id                 AS requestorId,
+    e.first_name         AS requestorFirstName,
+    e.last_name          AS requestorLastName,
+    e.email              AS requestorEmail,
+    e.department_id      AS requestorDepartmentId,
+    d.name               AS departmentName
+  FROM filtered_stages AS fs
+  INNER JOIN workflow_requests AS wr
+    ON wr.id = fs.workflow_request_id
+    AND wr.organization_id = :organizationId
+  INNER JOIN workflows AS w
+    ON w.id = wr.workflow_id
+    AND w.organization_id = :organizationId
+  INNER JOIN employees AS e
+    ON e.id = wr.requestor_id
+    AND e.organization_id = :organizationId
+  LEFT JOIN departments AS d
+    ON d.id = e.department_id
+   AND d.organization_id = :organizationId
+  WHERE 1 = 1
+    AND (:departmentId IS NULL OR e.department_id = :departmentId)
+    AND (:formId      IS NULL OR w.form_id       = :formId)
+    AND (:employeeId  IS NULL OR wr.requestor_id = :employeeId)
+),
+
+messages_agg AS (
+  SELECT
+    m.entity_id                 AS requestId,
+    COUNT(*)                    AS messageCount,
+    MAX(m.created_at)           AS lastMessageAt,
+    JSON_ARRAYAGG(m.member_ids) AS messageMemberIds
+  FROM messages m
+  WHERE
+    m.organization_id = :organizationId
+    AND m.entity_type  = 'REQUEST'
+    -- ✅ Only messages where member_ids contains the assignedToUserId
+    AND JSON_CONTAINS(
+          m.member_ids,
+          CAST(:assignedToUserId AS JSON),
+          '$'
+        )
+  GROUP BY
+    m.entity_id
+),
+
+joined_with_messages AS (
+  SELECT
+    jr.*,
+    ma.messageCount,
+    ma.messageMemberIds,
+    ma.lastMessageAt,
+    COUNT(*) OVER () AS total_items
+  FROM joined_rows AS jr
+  LEFT JOIN messages_agg AS ma
+    ON ma.requestId = jr.requestId
+)
+
+SELECT
+  *
+FROM joined_with_messages
+ORDER BY stageCreatedAt DESC, stageId DESC
+LIMIT :limit OFFSET :offset;
+
   `;
+
+  console.log("---sql-----", sql);
 
   type RowWithCount = PendingInboxRow & { total_items: number };
 
-  const rows = (await sequelize.query(sql, {
+  const rows = (await sequelize.query(sql2, {
     type: QueryTypes.SELECT,
     replacements: {
       organizationId,

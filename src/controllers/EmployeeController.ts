@@ -1,6 +1,14 @@
 import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
-import { Employee, Department, Position, Unit } from "../models";
+import {
+  Employee,
+  Department,
+  Position,
+  Unit,
+  WorkflowInstanceStage,
+  Organization,
+  SchoolOrOffice,
+} from "../models";
 import { Op } from "sequelize";
 import { buildQueryWithIncludes, Filter } from "../utils/filterWhereBuilder";
 import { AuthController } from "./AuthController";
@@ -27,14 +35,7 @@ export class EmployeeController {
         role,
       } = req.body;
 
-      if (
-        !positionId ||
-        !firstName ||
-        !lastName ||
-        !email ||
-        !organizationId ||
-        !password
-      ) {
+      if (!firstName || !lastName || !email || !organizationId || !password) {
         res.status(400).json({
           error:
             "positionId, firstName, lastName, email, and password are required",
@@ -70,16 +71,52 @@ export class EmployeeController {
         ),
       });
 
-      console.error("----------------EMPLOYEE-------------------", employee);
+      const employeeResult = await EmployeeController.employeeService.findById(
+        Number(employee?.id),
+        {
+          include: [Organization, Department, Position, Unit, SchoolOrOffice],
+        }
+      );
 
       res.status(201).json({
         success: true,
-        data: employee,
+        data: employeeResult,
       });
     } catch (error: any) {
       console.error("================error.message===========", error.message);
       res.status(500).json({
         error: error.message || "Failed to create employee",
+      });
+    }
+  }
+
+  static async getReceivers(req: Request, res: Response): Promise<void> {
+    console.log("-------------------------------HERE===========");
+    try {
+      const { entityId, entityType } = req.body;
+
+      let result;
+
+      if (entityType === "REQUEST")
+        result = await WorkflowInstanceStage.findAll({
+          where: {
+            organizationId: req.user?.organizationId,
+            workflowRequestId: entityId,
+          },
+          attributes: ["id"],
+          include: [
+            {
+              model: Employee,
+              as: "assignedTo",
+              attributes: ["id", "firstName", "lastName", "email"],
+            },
+          ],
+        });
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({
+        error: error.message || "Failed to create department",
       });
     }
   }

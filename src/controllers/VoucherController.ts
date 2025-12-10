@@ -3,7 +3,7 @@ import { Op, Transaction } from "sequelize";
 import Voucher from "../models/Voucher";
 import VoucherLine from "../models/VoucherLine";
 import ApprovalAction from "../models/ApprovalAction";
-import { Employee } from "../models";
+import { Employee, Workflow, WorkflowRequest } from "../models";
 import VoteBookAccount from "../models/VoteBookAccount";
 import VoteBookService from "../services/voteBookService";
 import sequelize from "../config/database";
@@ -117,6 +117,67 @@ export class VoucherController {
       res.json(voucher);
     } catch (error) {
       console.error("Get voucher error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+
+  static async getVoucherByEntityIds(req: Request, res: Response) {
+    try {
+      const { entityIds } = req.body;
+
+      if (!Array.isArray(entityIds) || entityIds.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "entityIds must be a non-empty array" });
+      }
+
+      const vouchers = await Voucher.findAll({
+        where: {
+          organization_id: req?.user?.organizationId,
+          entity_id: {
+            [Op.in]: entityIds,
+          },
+        },
+        include: [
+          {
+            model: WorkflowRequest,
+            attributes: ["id", "requestor_id", "workflow_id", "form_id"],
+            include: [
+              {
+                model: Employee,
+                as: "requestor",
+                attributes: ["id", "firstName", "lastName", "email"],
+              },
+              { model: Workflow, attributes: ["id", "name"] },
+              {
+                model: WorkflowRequest,
+                as: "parentRequest",
+                attributes: ["id", "requestor_id", "workflow_id"],
+                include: [
+                  {
+                    model: Employee,
+                    as: "requestor",
+                    attributes: ["id", "firstName", "lastName", "email"],
+                  },
+                  { model: Workflow, attributes: ["id", "name"] },
+                ],
+              },
+            ],
+          },
+        ],
+        attributes: [
+          "id",
+          "voucher_number",
+          "status",
+          "total_amount",
+          "created_at",
+        ],
+        order: [["created_at", "DESC"]],
+      });
+
+      res.json(vouchers);
+    } catch (error) {
+      console.error("Get vouchers by entity IDs error:", error);
       res.status(500).json({ message: "Server error" });
     }
   }

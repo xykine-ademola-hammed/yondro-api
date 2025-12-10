@@ -27,6 +27,7 @@ import {
   NcoaCode,
 } from "../models";
 import dotenv from "dotenv";
+import { Message } from "../models/Message";
 
 dotenv.config();
 
@@ -70,6 +71,7 @@ const sequelize = new Sequelize({
     Commitment,
     Payment,
     NcoaCode,
+    Message,
   ],
   pool: {
     max: 10,

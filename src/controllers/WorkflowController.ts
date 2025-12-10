@@ -173,6 +173,45 @@ export class WorkflowController {
         updateData
       );
 
+      const currentStages = await WorkflowController.stageService.findAll({
+        where: { workflowId: Number(id) },
+      });
+
+      for (const stage of updateData.stages) {
+        if (!stage.id) {
+          await WorkflowController.stageService.createOnly({
+            ...stage,
+            workflowId: Number(id),
+          });
+          continue;
+        }
+
+        const updatedStageData = updateData.stages.find(
+          (s: any) => s.id === stage.id
+        );
+
+        if (currentStages.find((s) => s.id === stage.id)) {
+          // Remove from currentStages to track which stages are updated
+          const index = currentStages.findIndex((s) => s.id === stage.id);
+          if (index > -1) {
+            currentStages.splice(index, 1);
+          }
+        }
+
+        if (updatedStageData) {
+          await WorkflowController.stageService.update(
+            stage.id,
+            updatedStageData
+          );
+        }
+      }
+
+      if (currentStages.length > 0) {
+        for (const stage of currentStages) {
+          await WorkflowController.stageService.delete(stage.id);
+        }
+      }
+
       if (!workflow) {
         res.status(404).json({
           error: "Workflow not found",

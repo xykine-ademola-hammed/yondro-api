@@ -257,86 +257,11 @@ export class VoteBookController {
         },
       ];
 
-      // Get commitments
-      const commitments = await Commitment.findAll({
-        where: { account_id: account.id },
-        include: [
-          {
-            model: Voucher,
-            attributes: ["id", "voucher_number", "purpose", "payee_name"],
-          },
-        ],
-        order: [["created_at", "DESC"]],
-      });
-
-      // Get expenditures (payments)
-      const expenditures = await Payment.findAll({
-        include: [
-          {
-            model: Voucher,
-            attributes: ["id", "voucher_number", "purpose", "payee_name"],
-            include: [
-              {
-                model: VoucherLine,
-                where: { account_id: account.id },
-                attributes: ["id", "total_amount"],
-              },
-            ],
-          },
-          {
-            model: Employee,
-            as: "processor",
-            attributes: ["id", "firstName", "lastName"],
-          },
-        ],
-        where: {
-          status: "completed",
-        },
-        order: [["payment_date", "DESC"]],
-      });
-
-      // Process commitments to add remaining amounts and linked expenditures
-      const processedCommitments = commitments.map((commitment) => {
-        const linkedExpenditures = expenditures.filter(
-          (exp) => exp.voucher_id === commitment.voucher_id
-        );
-
-        const totalExpended = linkedExpenditures.reduce(
-          (sum, exp) => sum + Number(exp.amount),
-          0
-        );
-        const remainingAmount = Number(commitment.amount) - totalExpended;
-
-        return {
-          ...commitment.toJSON(),
-          remaining_amount: remainingAmount,
-          expenditures: linkedExpenditures.map((exp) => ({
-            id: exp.id,
-            amount: Number(exp.amount),
-            date: exp.payment_date,
-          })),
-        };
-      });
-
-      // Process expenditures to include approved_by information
-      const processedExpenditures = expenditures.map((expenditure) => ({
-        id: expenditure.id,
-        voucher_id: expenditure.voucher_id,
-        amount: Number(expenditure.amount),
-        payment_date: expenditure.payment_date,
-        voucher: expenditure.voucher,
-        approved_by: expenditure.processor,
-        cost_object: null, // Would come from voucher line or payment details
-        notes: expenditure.notes,
-      }));
-
       res.json({
         ...account.toJSON(),
         balances,
         budgetAdjustments,
         allocations,
-        commitments: processedCommitments,
-        expenditures: processedExpenditures,
       });
     } catch (error) {
       console.error("Get account detail error:", error);

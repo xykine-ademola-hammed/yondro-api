@@ -14,6 +14,7 @@ import VoucherLine from "./VoucherLine";
 import ApprovalAction from "./ApprovalAction";
 import Commitment from "./Commitment";
 import Payment from "./Payment";
+import { WorkflowRequest } from "./WorkflowRequest";
 
 export type VoucherStatus =
   | "draft"
@@ -22,6 +23,7 @@ export type VoucherStatus =
   | "approved_l2"
   | "approved_l3"
   | "finance_approved"
+  | "processed"
   | "posted"
   | "paid"
   | "rejected"
@@ -129,6 +131,7 @@ export default class Voucher extends Model {
       "approved_l3",
       "finance_approved",
       "posted",
+      "processed",
       "paid",
       "rejected",
       "cancelled",
@@ -210,6 +213,9 @@ export default class Voucher extends Model {
   @BelongsTo(() => Employee, "requester_id")
   requester!: Employee;
 
+  @BelongsTo(() => WorkflowRequest, "entityId")
+  entity!: WorkflowRequest;
+
   @HasMany(() => VoucherLine)
   voucherLines!: VoucherLine[];
 
@@ -218,7 +224,4 @@ export default class Voucher extends Model {
 
   @HasMany(() => Commitment)
   commitments!: Commitment[];
-
-  @HasMany(() => Payment)
-  payments!: Payment[];
 }

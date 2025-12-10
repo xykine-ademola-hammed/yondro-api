@@ -14,8 +14,16 @@ export type PaymentMethod =
   | "check"
   | "cash"
   | "card"
+  | "gifmis-personnel"
+  | "gifmis-capital"
+  | "gifmis-overhead"
+  | "tsa-revitalization"
+  | "tsa-igr"
+  | "tsa-tetfund"
   | "other";
+
 export type PaymentStatus =
+  | "processed"
   | "pending"
   | "processing"
   | "completed"
@@ -35,12 +43,17 @@ export default class Payment extends Model {
   })
   id!: number;
 
-  @ForeignKey(() => Voucher)
   @Column({
     type: DataType.INTEGER,
-    allowNull: false,
+    allowNull: true,
   })
-  voucher_id!: number;
+  entityId!: number;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  entityType!: string;
 
   @ForeignKey(() => Employee)
   @Column({
@@ -56,7 +69,19 @@ export default class Payment extends Model {
   amount!: number;
 
   @Column({
-    type: DataType.ENUM("bank_transfer", "check", "cash", "card", "other"),
+    type: DataType.ENUM(
+      "bank_transfer",
+      "check",
+      "cash",
+      "card",
+      "gifmis-personnel",
+      "gifmis-capital",
+      "gifmis-overhead",
+      "tsa-revitalization",
+      "tsa-igr",
+      "tsa-tetfund",
+      "other"
+    ),
     allowNull: false,
   })
   payment_method!: PaymentMethod;
@@ -76,11 +101,13 @@ export default class Payment extends Model {
   @Column({
     type: DataType.DATE,
     allowNull: false,
+    defaultValue: DataType.NOW,
   })
   payment_date!: Date;
 
   @Column({
     type: DataType.ENUM(
+      "processed",
       "pending",
       "processing",
       "completed",
@@ -111,10 +138,6 @@ export default class Payment extends Model {
     defaultValue: DataType.NOW,
   })
   updated_at!: Date;
-
-  // Associations
-  @BelongsTo(() => Voucher)
-  voucher!: Voucher;
 
   @BelongsTo(() => Employee, "processor_id")
   processor!: Employee;

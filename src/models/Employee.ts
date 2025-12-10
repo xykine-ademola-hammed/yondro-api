@@ -114,14 +114,18 @@ export class Employee extends Model {
   @ForeignKey(() => SchoolOrOffice)
   @Column({
     type: DataType.INTEGER,
-    allowNull: false,
+    allowNull: true,
     field: "school_or_office_id",
   })
-  schoolOrOfficeId!: number;
+  schoolOrOfficeId?: number | null;
 
   @ForeignKey(() => Position)
-  @Column({ type: DataType.INTEGER, allowNull: false, field: "position_id" })
-  positionId!: number;
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+    field: "position_id",
+  })
+  positionId?: number | null;
 
   @ForeignKey(() => Department)
   @Column({ type: DataType.INTEGER, allowNull: true, field: "department_id" })
@@ -173,17 +177,17 @@ export class Employee extends Model {
 
   @BelongsTo(() => SchoolOrOffice, {
     foreignKey: "schoolOrOfficeId",
-    onDelete: "RESTRICT", // or 'CASCADE'
+    onDelete: "SET NULL",
     onUpdate: "CASCADE",
   })
-  schoolOrOffice!: SchoolOrOffice;
+  schoolOrOffice?: SchoolOrOffice | null;
 
   @BelongsTo(() => Position, {
     foreignKey: "positionId",
-    onDelete: "RESTRICT", // or 'CASCADE'
+    onDelete: "SET NULL",
     onUpdate: "CASCADE",
   })
-  position!: Position;
+  position?: Position | null;
 
   @BelongsTo(() => Department, {
     foreignKey: "departmentId",
@@ -231,8 +235,8 @@ export class Employee extends Model {
 export interface EmployeeAttributes {
   id: number;
   organizationId: number;
-  schoolOrOfficeId: number;
-  positionId: number;
+  schoolOrOfficeId?: number | null;
+  positionId?: number | null;
   departmentId?: number | null;
   unitId?: number | null;
   firstName: string;

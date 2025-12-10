@@ -31,6 +31,10 @@ function asBool(v: any, def = false) {
   return ["1", "true", "yes", "on"].includes(String(v).toLowerCase());
 }
 
+const orgName = process.env.ORG_NAME || "Your Organization";
+const fromName = process.env.FROM_NAME || orgName;
+const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER!; // safer default
+
 export class EmailService {
   private transporter: nodemailer.Transporter;
 
@@ -147,6 +151,44 @@ export class EmailService {
     });
   }
 
+  async sendMessageEmail({
+    senderName,
+    senderEmail,
+    receiverEmails,
+    subject,
+    message,
+  }: {
+    senderName: string;
+    senderEmail: string;
+    receiverEmails: string[];
+    subject: string;
+    message: string;
+  }): Promise<void> {
+    const orgName = process.env.ORG_NAME || "Your Organization";
+    const fromName = process.env.FROM_NAME || orgName;
+    const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER!; // safer default
+
+    await this.transporter.sendMail({
+      from: `${fromName} <${fromEmail}>`,
+      to: receiverEmails,
+      subject,
+      text: this.generateMessageEmailText(
+        "all",
+        senderName,
+        senderEmail,
+        message,
+        subject
+      ),
+      html: this.generateMessageEmailHTML(
+        "all",
+        senderName,
+        senderEmail,
+        message,
+        subject
+      ),
+    });
+  }
+
   async sendTaskEmail(workflowRequest: WorkflowRequest): Promise<void> {
     // get nextstage
     const nextStage = await StageUtils.getNextStage(workflowRequest?.id);
@@ -159,10 +201,6 @@ export class EmailService {
 
     const requestor = request?.requestor;
     const workflow = request?.workflow;
-
-    const orgName = process.env.ORG_NAME || "Your Organization";
-    const fromName = process.env.FROM_NAME || orgName;
-    const fromEmail = process.env.FROM_EMAIL || process.env.SMTP_USER!; // safer default
 
     if (nextStage) {
       const receiver = nextStage?.assignedTo;
@@ -208,6 +246,49 @@ export class EmailService {
       - Department: ${requestor?.department?.name}
       - Position: ${requestor?.position.title}
 
+`;
+  }
+
+  private generateMessageEmailText(
+    type: "all" | "single",
+    senderName: string,
+    senderEmail: string,
+    message: string,
+    subject: string
+  ): string {
+    return `
+New message on Request #${subject}
+
+From: ${senderName} <${senderEmail}>
+Message:
+${message}
+
+Please log in to the portal to reply.
+`;
+  }
+
+  private generateMessageEmailHTML(
+    type: "all" | "single",
+    senderName: string,
+    senderEmail: string,
+    message: string,
+    subject: string
+  ): string {
+    return `
+<div style="font-family: Arial, sans-serif; color: #333">
+  <h2>New Message on Request #${subject}</h2>
+
+  <hr />
+
+  <p><strong>From:</strong> ${senderName} (${senderEmail})</p>
+  <p style="white-space: pre-line">${message}</p>
+
+  <hr />
+
+  <p>
+    Please log in to the portal to respond.
+  </p>
+</div>
 `;
   }
 

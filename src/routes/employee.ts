@@ -49,4 +49,10 @@ router.delete(
   EmployeeController.delete
 );
 
+router.post(
+  "/employees/receivers",
+  authenticate,
+  EmployeeController.getReceivers
+);
+
 export default router;

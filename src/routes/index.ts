@@ -14,6 +14,8 @@ import vouchersRoutes from "./vouchers";
 import budgetAdjustmentsRoutes from "./budget-adjustments";
 import fiscalYearRoutes from "./fiscal-year";
 import pdfRoutes from "./pdf";
+import messageRoutes from "./message";
+import paymentRoutes from "./payment";
 
 const router = Router();
 
@@ -27,6 +29,8 @@ router.use("/api", organizationRoutes);
 router.use("/api", departmentRoutes);
 router.use("/api", positionRoutes);
 router.use("/api", employeeRoutes);
+router.use("/api/payments", paymentRoutes);
+router.use("/api/messages", messageRoutes);
 router.use("/api/ncoa", ncoaRoutes);
 router.use("/api/votebooks", votebooksRoutes);
 router.use("/api/vouchers", vouchersRoutes);

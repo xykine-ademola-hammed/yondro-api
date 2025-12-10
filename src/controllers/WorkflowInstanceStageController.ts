@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import { BaseService } from "../services/BaseService";
-import { WorkflowInstanceStage, Stage } from "../models";
-import { buildQueryWithIncludes, Filter } from "../utils/filterWhereBuilder";
-import sequelize from "../config/database";
+import { WorkflowInstanceStage } from "../models";
 import { findUserInboxWithCTE } from "../services/WorkflowInstanceStageService";
 
 export class WorkflowInstanceStageController {
@@ -30,8 +28,6 @@ export class WorkflowInstanceStageController {
         limit,
         offset,
       });
-
-      console.log("=============111================>>>>>>>>", result);
 
       res.json(result);
     } catch (error: any) {

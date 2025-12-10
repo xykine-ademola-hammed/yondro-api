@@ -15,6 +15,7 @@ import { Workflow } from "./Workflow";
 import { Employee } from "./Employee";
 import { WorkflowInstanceStage } from "./WorkflowInstanceStage";
 import { WorkflowRequestStatus } from "../types";
+import { Message } from "./Message";
 
 @Table({
   tableName: "workflow_requests",
@@ -143,6 +144,9 @@ export class WorkflowRequest extends Model {
    */
   @HasMany(() => WorkflowRequest, "parentRequestId")
   childRequests?: WorkflowRequest[];
+
+  @HasMany(() => Message)
+  messages?: Message[];
 }
 
 export interface WorkflowRequestAttributes {

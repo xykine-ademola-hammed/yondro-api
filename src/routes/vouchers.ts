@@ -10,6 +10,12 @@ router.get("/", authenticate, VoucherController.getVouchers);
 // Get single voucher
 router.get("/:id", authenticate, VoucherController.getVoucher);
 
+router.post(
+  "/get-by-entity-ids",
+  authenticate,
+  VoucherController.getVoucherByEntityIds
+);
+
 // Create voucher
 router.post(
   "/",
